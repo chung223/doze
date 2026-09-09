@@ -1,0 +1,19 @@
+{
+  "id": "./",
+  "name": "骰寶練習桌",
+  "short_name": "骰寶練習",
+  "description": "完整賠率的骰寶練習桌：互動教學、真骰子、珠盤路，下注時即時顯示長期期望值與莊家優勢。",
+  "lang": "zh-Hant",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "background_color": "#071309",
+  "theme_color": "#0C2317",
+  "categories": ["games", "education"],
+  "icons": [
+    { "src": "./icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "./icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

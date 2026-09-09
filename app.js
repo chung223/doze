@@ -5,6 +5,8 @@
 (function () {
   'use strict';
 
+  var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
   /* ---------------- 亂數：crypto + 拒絕採樣（去掉取模偏差） ------------- */
   var pool = new Uint8Array(1024), poolAt = pool.length;
   var hasCrypto = typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function';
@@ -107,15 +109,18 @@
     last: {},                 // 上一局的注碼
     road: [],                 // {t: 總點, k: 'big'|'small'|'triple'}
     sound: false,
+    open: null,               // 各注區分類是否展開（手機預設只開常用的）
+    tourDone: false,
     stats: { rounds: 0, wagered: 0, returned: 0, evSum: 0, dist: {}, groups: {} }
   };
-  var rolling = false, seeded = false;
+  var rolling = false;
 
   function save() {
     try {
       localStorage.setItem(STORE, JSON.stringify({
         balance: state.balance, chip: state.chip, last: state.last,
-        road: state.road.slice(-60), sound: state.sound, stats: state.stats
+        road: state.road.slice(-60), sound: state.sound, stats: state.stats,
+        open: state.open, tourDone: state.tourDone
       }));
     } catch (e) { /* 私密瀏覽或封鎖儲存時忽略 */ }
   }
@@ -125,6 +130,7 @@
       var o = JSON.parse(raw); if (!o || typeof o.balance !== 'number') return false;
       state.balance = o.balance; state.chip = o.chip || 25; state.last = o.last || {};
       state.road = o.road || []; state.sound = !!o.sound;
+      state.open = o.open || null; state.tourDone = !!o.tourDone;
       if (o.stats) state.stats = o.stats;
       if (!state.stats.dist) state.stats.dist = {};
       if (!state.stats.groups) state.stats.groups = {};
@@ -216,6 +222,11 @@
       o.connect(g); g.connect(x.destination); o.start(x.currentTime + t); o.stop(x.currentTime + t + 0.34);
     });
   }
+  function buzz(pattern) {
+    if (reduced) return;
+    try { if (navigator.vibrate) navigator.vibrate(pattern); } catch (e) { /* 不支援就算了 */ }
+  }
+
   function tick() {
     var x = state.sound && ac(); if (!x) return;
     var o = x.createOscillator(), g = x.createGain();
@@ -245,44 +256,65 @@
     cellEls[bet.id] = el;
     return el;
   }
-  function band(title, odds, hint, gridCls) {
+  var bandEls = {};
+  function band(key, title, odds, hint, gridCls) {
     var sec = document.createElement('section'); sec.className = 'band';
-    var head = document.createElement('div'); head.className = 'band-head';
-    head.innerHTML = '<h3>' + title + '</h3>' + (odds ? '<span class="odds">' + odds + '</span>' : '') +
+    var head = document.createElement('button'); head.type = 'button'; head.className = 'band-head';
+    head.innerHTML = '<span class="chev" aria-hidden="true">▶</span><h3>' + title + '</h3>' +
+      (odds ? '<span class="odds">' + odds + '</span>' : '') +
+      '<span class="count" id="count-' + key + '"></span>' +
       (hint ? '<span class="hint">' + hint + '</span>' : '');
     var grid = document.createElement('div'); grid.className = 'grid ' + gridCls;
+    grid.id = 'band-' + key;
+    head.setAttribute('aria-controls', grid.id);
+    head.addEventListener('click', function () { toggleBand(key); });
     sec.appendChild(head); sec.appendChild(grid);
+    bandEls[key] = { sec: sec, head: head, grid: grid };
     return { sec: sec, grid: grid };
+  }
+  function applyBands() {
+    for (var k in bandEls) {
+      var on = !!state.open[k];
+      bandEls[k].sec.classList.toggle('collapsed', !on);
+      bandEls[k].head.setAttribute('aria-expanded', String(on));
+    }
+  }
+  function toggleBand(key) {
+    state.open[key] = !state.open[key];
+    applyBands(); save();
+  }
+  function openBand(key) {
+    if (!state.open[key]) { state.open[key] = true; applyBands(); save(); }
   }
   function buildLayout() {
     var root = $('layout'), k;
 
-    var b1 = band('圍骰', '', '三顆同點', 'g-triples');
+    var b1 = band('triple', '圍骰', '', '三顆同點', 'g-triples');
     for (k = 1; k <= 6; k++) {
       b1.grid.appendChild(makeCell(BY_ID['triple' + k], mini(k) + mini(k) + mini(k), 'tall'));
     }
     b1.grid.appendChild(makeCell(BY_ID.anytriple, '', 'tall'));
     root.appendChild(b1.sec);
 
-    var b2 = band('大 · 小 · 單 · 雙', '賠 1 : 1', '開圍骰通殺', 'g-main');
+    var b2 = band('main', '大 · 小 · 單 · 雙', '賠 1 : 1', '開圍骰通殺', 'g-main');
     ['small', 'odd', 'even', 'big'].forEach(function (id) { b2.grid.appendChild(makeCell(BY_ID[id], '', 'main tall')); });
     root.appendChild(b2.sec);
 
-    var b3 = band('長骰（對子）', '賠 10 : 1', '指定點數至少出現兩次', 'g-doubles');
+    var b3 = band('double', '長骰（對子）', '賠 10 : 1', '指定點數至少出現兩次', 'g-doubles');
     for (k = 1; k <= 6; k++) b3.grid.appendChild(makeCell(BY_ID['double' + k], mini(k) + mini(k)));
     root.appendChild(b3.sec);
 
-    var b4 = band('點數總和', '', '賠率印在格內', 'g-totals');
+    var b4 = band('total', '點數總和', '', '賠率印在格內', 'g-totals');
     for (k = 4; k <= 17; k++) b4.grid.appendChild(makeCell(BY_ID['total' + k], '', 'num-cell'));
     root.appendChild(b4.sec);
 
-    var b5 = band('二骰組合', '賠 6 : 1', '兩個不同點數各至少一顆', 'g-combos');
+    var b5 = band('combo', '二骰組合', '賠 6 : 1', '兩個不同點數各至少一顆', 'g-combos');
     BETS.forEach(function (bet) {
       if (bet.group === 'combo') b5.grid.appendChild(makeCell(bet, mini(bet.dice[0]) + mini(bet.dice[1])));
     });
     root.appendChild(b5.sec);
 
-    var b6 = band('單骰', '中 1 / 2 / 3 顆　賠 1 / 2 / 3', '', 'g-singles');
+    var b6 = band('single', '單骰', '中 1 / 2 / 3 顆　賠 1 / 2 / 3', '', 'g-singles');
     for (k = 1; k <= 6; k++) b6.grid.appendChild(makeCell(BY_ID['single' + k], mini(k, 'lg'), 'tall'));
     root.appendChild(b6.sec);
 
@@ -345,7 +377,7 @@
     state.bets[id] = (state.bets[id] || 0) + amt;
     state.balance -= amt;
     state.stack.push({ id: id, amt: amt });
-    tick(); renderTable(); renderMeters(); save();
+    tick(); buzz(10); renderTable(); renderMeters(); save();
   }
   function takeBack(id) {
     if (rolling || !state.bets[id]) return;
@@ -400,25 +432,24 @@
 
   /* ---------------- 開骰 ---------------- */
   function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
-  var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
   function roll() {
-    if (rolling) return;
+    if (rolling) return Promise.resolve();
     var stake = totalStake();
-    if (!stake) { toast('請先下注：選籌碼後點桌面注區。'); return; }
+    if (!stake) { toast('請先下注：選籌碼後點桌面注區。'); return Promise.resolve(); }
     rolling = true; setBusy(true);
     var dice = rollDice();
 
     var dome = $('dome');
     if (reduced) {
       showDice(dice, false); settle(dice, stake);
-      return;
+      return Promise.resolve();
     }
-    rattle();
+    rattle(); buzz([16, 60, 16, 60, 22]);
     dome.classList.remove('shaking');
     void dome.offsetWidth;
     dome.classList.add('shaking');
-    wait(620).then(function () {
+    return wait(620).then(function () {
       dome.classList.remove('shaking');
       showDice(dice, true);
       return wait(950);
@@ -460,14 +491,34 @@
 
     state.bets = {}; state.stack = [];
     renderResult(dice, tot, kind, rows, stake, returned, net);
-    renderTable(); renderMeters(); renderRoad(); renderStats(); save();
-    chime(net >= 0);
+    renderTable(); renderMeters(); renderRoad(); renderStats(); showSheet(dice, tot, kind, net); save();
+    chime(net >= 0); buzz(net > 0 ? [22, 50, 22] : 14);
     if (net > 0) toast('本局 ' + signed(net) + '　派彩 ' + money(returned));
     else if (net < 0) toast('本局 ' + signed(net));
     if (state.balance <= 0 && !totalStake()) toast('籌碼用完了 — 到「統計」分頁按「重置牌局」再來一輪。');
 
     rolling = false; setBusy(false);
   }
+
+  var sheetTimer = null;
+  function showSheet(dice, tot, kind, net) {
+    var el = $('sheet');
+    // 停在工具列正上方（工具列高度會隨機型與安全區改變）
+    el.style.bottom = ($('dock').offsetHeight + 10) + 'px';
+    $('sheetDice').innerHTML = dice.map(function (v) { return mini(v, 'lg'); }).join('');
+    $('sheetTotal').textContent = tot;
+    var LABEL = { big: '大', small: '小', triple: '圍骰' };
+    $('sheetVerdict').textContent = kind === 'triple'
+      ? '圍骰 ' + dice[0] + '，大小單雙通殺'
+      : LABEL[kind] + ' · ' + (tot % 2 === 1 ? '單' : '雙') + ' · ' + dice.join('+');
+    var n = $('sheetNet');
+    n.textContent = signed(net);
+    n.className = 'sheet-net num ' + netClass(net);
+    el.hidden = false;
+    clearTimeout(sheetTimer);
+    sheetTimer = setTimeout(hideSheet, 4200);
+  }
+  function hideSheet() { clearTimeout(sheetTimer); $('sheet').hidden = true; }
 
   function setBusy(on) {
     ['btnRoll', 'btnRepeat', 'btnUndo', 'btnClear', 'btnDouble'].forEach(function (id) { $(id).disabled = on; });
@@ -488,6 +539,21 @@
         s.textContent = amt >= 1000 ? (amt / 1000) + 'K' : amt;
         el.appendChild(s);
       }
+    }
+    renderBandCounts();
+  }
+
+  /* 收合起來的分類若藏著注碼，在標題上標出金額，才不會忘記 */
+  function renderBandCounts() {
+    var per = {};
+    for (var id in state.bets) {
+      var g = BY_ID[id].group;
+      per[g] = (per[g] || 0) + state.bets[id];
+    }
+    for (var k in bandEls) {
+      var badge = bandEls[k].head.querySelector('.count');
+      if (per[k]) { badge.textContent = money(per[k]); badge.classList.add('on'); }
+      else { badge.textContent = ''; badge.classList.remove('on'); }
     }
   }
 
@@ -693,6 +759,228 @@
     toast('已重置，餘額 ' + money(START) + '。');
   }
 
+
+  /* --------- 教學導覽 --------- */
+  var TOUR = [
+    { title: '這是骰寶練習桌',
+      body: '骰寶就是荷官搖<b>三顆骰子</b>，你在搖之前押注。這個導覽會帶你走完一整局，大約四十秒。' },
+
+    { el: '#tray', title: '① 先選籌碼',
+      body: '點一個面額；之後你每點一次注區，就放上這個金額的籌碼。我先幫你選了 <b>25</b>。',
+      before: function () { setChip(25); } },
+
+    { el: '[data-bet="small"]', title: '② 押第一注：小',
+      body: '總點 <b>4–10</b> 是「小」、<b>11–17</b> 是「大」，都賠 1:1。我幫你在「小」放了 25。<br>要退回一注：電腦按<b>右鍵</b>、手機<b>長按</b>那一格。',
+      before: function () { openBand('main'); if (!state.bets.small) place('small'); } },
+
+    { el: '#evMeter', title: '③ 全場最該看的一格',
+      body: '「本局期望值」即時算出這組注碼<b>長期平均每局會賠掉多少</b>。押大小只有 −2.78%，是最划算的注；待會你可以改押點數 9，看它掉到 −18.98%。' },
+
+    { el: '#btnRoll', title: '④ 開骰',
+      body: '按下去荷官就搖骰。點「下一步」，我直接幫你開這一局。',
+      after: function () { return roll(); } },
+
+    { title: '⑤ 讀結果',
+      dyn: function () {
+        var s = $('sheet');
+        return (!s.hidden && getComputedStyle(s).display !== 'none') ? '#sheet' : '#plate';
+      },
+      body: '三顆骰子的總點決定輸贏。<b>你押中的注區會發亮</b>；沒押到但有開出的格子會描上金邊，一眼看得出錯過了什麼。' },
+
+    { el: '.road-wrap', title: '⑥ 珠盤路',
+      body: '每局結果依序記在這裡：<b>紅大、藍小、綠圍骰</b>。提醒一句——骰子沒有記憶，路紋好看，但不能拿來預測下一局。' },
+
+    { el: '.tabs', title: '⑦ 另外三個分頁',
+      body: '<b>統計</b>：實際 vs 理論返還率，還能跑 1,000 局快速模擬。<br><b>賠率</b>：所有注區依莊家優勢排序。<br><b>教學</b>：完整玩法、常見迷思、練習建議。' },
+
+    { title: '就這樣，開始玩吧',
+      body: '隨時按標題列的<b>「教學導覽」</b>可以再看一次。<br>手機建議用瀏覽器選單<b>「加入主畫面」</b>裝起來，離線也能玩。' }
+  ];
+
+  var tourIdx = -1, tourDom = null;
+
+  function buildTour() {
+    var t = document.createElement('div');
+    t.className = 'tour'; t.id = 'tour'; t.hidden = true;
+    t.innerHTML =
+      '<div class="tour-mask" id="tourMask"></div>' +
+      '<div class="tour-card" id="tourCard" role="dialog" aria-modal="true" aria-labelledby="tourTitle">' +
+        '<div class="tour-step" id="tourStep"></div>' +
+        '<h4 id="tourTitle"></h4>' +
+        '<p id="tourBody"></p>' +
+        '<div class="tour-actions">' +
+          '<button class="btn sm" type="button" data-tour="skip">略過</button>' +
+          '<span class="spacer"></span>' +
+          '<button class="btn sm" type="button" data-tour="prev">上一步</button>' +
+          '<button class="btn primary sm" type="button" data-tour="next">下一步</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(t);
+    tourDom = t;
+    t.addEventListener('click', function (e) {
+      var a = e.target.getAttribute && e.target.getAttribute('data-tour');
+      if (a === 'skip') endTour();
+      else if (a === 'prev') { if (tourIdx > 0) showStep(tourIdx - 1); }
+      else if (a === 'next') nextStep();
+    });
+    window.addEventListener('resize', function () { if (!tourDom.hidden) positionTour(); });
+  }
+
+  function startTour() {
+    hideSheet();
+    if (tourDom.hidden) { tourDom.hidden = false; }
+    showStep(0);
+  }
+  function endTour() {
+    tourDom.hidden = true;
+    state.tourDone = true; save();
+  }
+  function nextStep() {
+    var s = TOUR[tourIdx], btn = tourDom.querySelector('[data-tour="next"]');
+    var go = function () { if (tourIdx >= TOUR.length - 1) endTour(); else showStep(tourIdx + 1); };
+    if (s && s.after) {
+      btn.disabled = true; btn.textContent = '搖骰中…';
+      Promise.resolve(s.after()).then(function () {
+        btn.disabled = false; btn.textContent = '下一步';
+        go();
+      });
+      return;
+    }
+    go();
+  }
+
+  var tourTarget = null;
+  function showStep(i) {
+    tourIdx = i;
+    var s = TOUR[i];
+    if (s.before) s.before();
+    $('tourStep').textContent = (i + 1) + ' / ' + TOUR.length;
+    $('tourTitle').textContent = s.title;
+    $('tourBody').innerHTML = s.body;
+    tourDom.querySelector('[data-tour="prev"]').hidden = i === 0;
+    var next = tourDom.querySelector('[data-tour="next"]');
+    next.textContent = i === TOUR.length - 1 ? '開始玩' : '下一步';
+    next.disabled = false;
+
+    var sel = s.dyn ? s.dyn() : s.el;
+    tourTarget = sel ? document.querySelector(sel) : null;
+    if (tourTarget && tourTarget.scrollIntoView) {
+      tourTarget.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' });
+    }
+    positionTour();
+    if (!reduced && tourTarget) setTimeout(positionTour, 420);
+  }
+
+  function positionTour() {
+    var mask = $('tourMask'), card = $('tourCard');
+    var vw = window.innerWidth, vh = window.innerHeight, pad = 6;
+    var rect = tourTarget ? tourTarget.getBoundingClientRect() : null;
+
+    if (!rect || (!rect.width && !rect.height)) {
+      mask.classList.add('center');
+      mask.style.top = (vh / 2) + 'px'; mask.style.left = (vw / 2) + 'px';
+      mask.style.width = '0px'; mask.style.height = '0px';
+    } else {
+      mask.classList.remove('center');
+      mask.style.top = (rect.top - pad) + 'px';
+      mask.style.left = (rect.left - pad) + 'px';
+      mask.style.width = (rect.width + pad * 2) + 'px';
+      mask.style.height = (rect.height + pad * 2) + 'px';
+    }
+
+    var ch = card.offsetHeight, cw = card.offsetWidth;
+    if (vw <= 860) {
+      card.style.left = '10px'; card.style.right = '10px'; card.style.width = 'auto';
+      if (!rect) { card.style.top = Math.max(14, (vh - ch) / 2) + 'px'; card.style.bottom = 'auto'; }
+      else if (rect.top > vh * 0.42) { card.style.top = '14px'; card.style.bottom = 'auto'; }
+      else { card.style.top = Math.min(vh - ch - 14, rect.bottom + 14) + 'px'; card.style.bottom = 'auto'; }
+      return;
+    }
+    card.style.right = 'auto'; card.style.width = '';
+    if (!rect) {
+      card.style.top = Math.max(14, (vh - ch) / 2) + 'px';
+      card.style.left = Math.max(12, (vw - cw) / 2) + 'px';
+      return;
+    }
+    var top = rect.bottom + 14;
+    if (top + ch > vh - 12) top = rect.top - ch - 14;
+    card.style.top = Math.max(12, Math.min(top, vh - ch - 12)) + 'px';
+    card.style.left = Math.max(12, Math.min(rect.left + rect.width / 2 - cw / 2, vw - cw - 12)) + 'px';
+  }
+
+  /* --------- 教學分頁的注區說明（數字取自同一份定義） --------- */
+  var LEARN = [
+    { id: 'big', name: '大 / 小', art: [], when: '三顆總點 <b>11–17</b> 開大、<b>4–10</b> 開小。開圍骰兩邊都輸。' },
+    { id: 'odd', name: '單 / 雙', art: [], when: '看總點是奇數還是偶數。一樣，開圍骰兩邊都輸。' },
+    { id: 'combo12', name: '二骰組合', art: [1, 2], when: '你買的兩個不同點數<b>各至少出現一顆</b>。買「1 和 2」，開 1-2-5 就中。' },
+    { id: 'single1', name: '單骰', art: [3], when: '你買的點數<b>至少出現一顆</b>；出現 1／2／3 顆分別賠 1／2／3 倍。' },
+    { id: 'total7', name: '點數 4–17', art: [], when: '三顆加起來剛好等於你買的數字。<b>每個點數賠率都不同</b>：7 或 14 賠 12:1，9 或 12 只賠 6:1。' },
+    { id: 'double1', name: '長骰（指定對子）', art: [4, 4], when: '你買的點數<b>至少出現兩顆</b>。開該點的圍骰也算中。' },
+    { id: 'anytriple', name: '全圍', art: [], when: '開出<b>任意</b>三顆同點（1-1-1 到 6-6-6 都算）。' },
+    { id: 'triple1', name: '圍骰（指定三同點）', art: [5, 5, 5], when: '開出你<b>指定</b>的那一種三同點。全場賠率最高，也最難中。' }
+  ];
+  function buildLearn() {
+    $('learnBets').innerHTML = LEARN.map(function (o) {
+      var bt = BY_ID[o.id];
+      var cls = bt.he < 0.05 ? ' good' : bt.he > 0.15 ? ' bad' : '';
+      var art = o.art.length ? '<span class="lb-art">' + o.art.map(function (v) { return mini(v); }).join('') + '</span>' : '<span></span>';
+      return '<div class="lb">' + art + '<div><div class="lb-name">' + o.name + '</div>' +
+        '<div class="lb-when">' + o.when + '</div>' +
+        '<div class="lb-meta"><span>賠率 <b>' + bt.oddsText + '</b></span>' +
+        '<span>機率 ' + pct(bt.ways / 216, 1) + '</span>' +
+        '<span class="he' + cls + '">莊家優勢 ' + pct(bt.he) + '</span></div></div></div>';
+    }).join('');
+  }
+
+  /* --------- PWA：離線、安裝、更新 --------- */
+  var waitingWorker = null, installPrompt = null, updateRequested = false;
+  function setupPWA() {
+    var isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    var standalone = (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches) ||
+      navigator.standalone === true;
+
+    window.addEventListener('beforeinstallprompt', function (e) {
+      e.preventDefault(); installPrompt = e; $('btnInstall').hidden = false;
+    });
+    window.addEventListener('appinstalled', function () {
+      installPrompt = null; $('btnInstall').hidden = true; toast('已加入主畫面，離線也能玩。');
+    });
+    if (isIOS && !standalone) $('btnInstall').hidden = false;
+
+    $('btnInstall').addEventListener('click', function () {
+      if (installPrompt) { installPrompt.prompt(); installPrompt = null; $('btnInstall').hidden = true; return; }
+      toast('Safari：分享按鈕 → 加入主畫面。');
+    });
+    $('btnUpdate').addEventListener('click', function () {
+      updateRequested = true;
+      if (waitingWorker) waitingWorker.postMessage({ type: 'SKIP_WAITING' });
+      else location.reload();
+    });
+
+    // 單檔版（Artifact）沒有 manifest，也就沒有 service worker 可註冊
+    if (!document.querySelector('link[rel="manifest"]')) return;
+    if (!('serviceWorker' in navigator) || location.protocol.indexOf('http') !== 0) return;
+
+    navigator.serviceWorker.register('./sw.js').then(function (reg) {
+      reg.addEventListener('updatefound', function () {
+        var nw = reg.installing; if (!nw) return;
+        nw.addEventListener('statechange', function () {
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+            waitingWorker = nw; $('btnUpdate').hidden = false;
+          }
+        });
+      });
+    }).catch(function () { /* 離線或不支援時忽略 */ });
+
+    // 只有在使用者按下「有新版本」時才重新整理；
+    // 第一次註冊時 clients.claim() 也會觸發這個事件，那時重整只會打斷人。
+    var reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (!updateRequested || reloading) return;
+      reloading = true; location.reload();
+    });
+  }
+
   /* --------- 分頁 --------- */
   function setupTabs() {
     var tabs = Array.prototype.slice.call(document.querySelectorAll('.tab'));
@@ -722,7 +1010,18 @@
     simOut.className = 'rows'; simOut.id = 'simOut'; simOut.style.marginTop = '10px';
     $('p-stats').appendChild(simOut);
 
+    buildLearn();
+    buildTour();
+
     var restored = load();
+
+    // 手機螢幕短，第一次只展開最常用的兩區；桌機全開
+    if (!state.open) {
+      var narrow = window.innerWidth <= 860;
+      state.open = { triple: !narrow, main: true, double: !narrow, total: true, combo: !narrow, single: !narrow };
+    }
+    applyBands();
+
     setChip(state.chip);
     $('railLimit').textContent = '1 – ' + money(SPOT_MAX);
     $('btnSound').setAttribute('aria-pressed', String(state.sound));
@@ -732,14 +1031,11 @@
     showDice(lastRound && lastRound.d ? lastRound.d : [3, 5, 6], false);
     if (lastRound && lastRound.d) showPlate(lastRound.d, lastRound.t, lastRound.k);
 
-    if (!restored) {
-      // 開場示範：先幫使用者放一注，讓期望值面板有東西可看
-      state.bets.small = 10; state.balance -= 10; state.stack.push({ id: 'small', amt: 10 });
-      seeded = true;
-    }
-
     renderTable(); renderMeters(); renderRoad(); renderStats();
-    if (seeded) toast('已示範放 10 在「小」— 可按「清除全部」改押。');
+    setupPWA();
+
+    // 第一次來就直接帶一次導覽
+    if (!restored && !state.tourDone) setTimeout(startTour, 800);
 
     $('btnRoll').addEventListener('click', roll);
     $('btnRepeat').addEventListener('click', repeatBets);
@@ -748,6 +1044,9 @@
     $('btnDouble').addEventListener('click', doubleBets);
     $('btnSim').addEventListener('click', function () { simulate(1000); });
     $('btnReset').addEventListener('click', resetAll);
+    $('btnTour').addEventListener('click', startTour);
+    $('btnTour2').addEventListener('click', startTour);
+    $('sheet').addEventListener('click', hideSheet);
     $('btnSound').addEventListener('click', function () {
       state.sound = !state.sound;
       this.setAttribute('aria-pressed', String(state.sound));
@@ -761,6 +1060,12 @@
       var tag = (e.target && e.target.tagName) || '';
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       var k = e.key.toLowerCase();
+      if (!tourDom.hidden) {
+        if (e.key === 'Escape') endTour();
+        else if (e.key === 'Enter') nextStep();
+        return;
+      }
+      if (e.key === 'Escape') { hideSheet(); return; }
       if (e.code === 'Space' || k === ' ') {
         if (tag === 'BUTTON') return;          // 讓焦點在按鈕上時維持原生行為
         e.preventDefault(); roll();
