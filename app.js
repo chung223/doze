@@ -7,81 +7,11 @@
 
   var reduced = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  /* ---------------- 亂數：crypto + 拒絕採樣（去掉取模偏差） ------------- */
-  var pool = new Uint8Array(1024), poolAt = pool.length;
-  var hasCrypto = typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function';
-  function nextByte() {
-    if (!hasCrypto) return Math.floor(Math.random() * 256);
-    if (poolAt >= pool.length) { crypto.getRandomValues(pool); poolAt = 0; }
-    return pool[poolAt++];
-  }
-  function d6() {
-    for (;;) { var b = nextByte(); if (b < 252) return (b % 6) + 1; }
-  }
-  function rollDice() { return [d6(), d6(), d6()]; }
+  /* ---------------- 機率模型（bets.js） ---------------- */
+  var S = (typeof SicBo !== 'undefined') ? SicBo : window.SicBo;
+  var WAYS = S.WAYS, BETS = S.BETS, BY_ID = S.BY_ID, GROUP_LABEL = S.GROUP_LABEL;
+  var rollDice = S.rollDice, netOf = S.netOf, isTriple = S.isTriple, sum = S.sum;
 
-  /* ---------------- 組合計算 ---------------- */
-  var WAYS = {};                       // 總點 -> 組合數（共 216）
-  for (var a = 1; a <= 6; a++) for (var b = 1; b <= 6; b++) for (var c = 1; c <= 6; c++) {
-    var t = a + b + c; WAYS[t] = (WAYS[t] || 0) + 1;
-  }
-  var TOTAL_PAY = { 4: 60, 17: 60, 5: 30, 16: 30, 6: 17, 15: 17, 7: 12, 14: 12, 8: 8, 13: 8, 9: 6, 12: 6, 10: 6, 11: 6 };
-
-  /* ---------------- 注區定義 ----------------
-     resolve(dice) 回傳「每一元本金的淨結果」：+n 為淨贏，-1 為輸光本金。 */
-  var BETS = [];
-  var BY_ID = {};
-  var GROUP_LABEL = { triple: '圍骰／全圍', main: '大小單雙', double: '長骰', total: '點數', combo: '二骰組合', single: '單骰' };
-
-  function add(bet) {
-    if (bet.ev === undefined) bet.ev = (bet.ways / 216) * (bet.payout + 1) - 1;
-    bet.he = -bet.ev;                                   // 莊家優勢
-    if (!bet.oddsText) bet.oddsText = bet.payout + ' : 1';
-    BETS.push(bet); BY_ID[bet.id] = bet; return bet;
-  }
-  function counts(d) { var m = [0, 0, 0, 0, 0, 0, 0]; m[d[0]]++; m[d[1]]++; m[d[2]]++; return m; }
-  function isTriple(d) { return d[0] === d[1] && d[1] === d[2]; }
-  function sum(d) { return d[0] + d[1] + d[2]; }
-
-  var n, i, j;
-  // 圍骰（指定三同點）
-  for (n = 1; n <= 6; n++) (function (v) {
-    add({ id: 'triple' + v, group: 'triple', label: '圍 ' + v, ways: 1, payout: 180, dice: [v, v, v],
-      resolve: function (d) { return isTriple(d) && d[0] === v ? 180 : -1; } });
-  })(n);
-  // 全圍
-  add({ id: 'anytriple', group: 'triple', label: '全圍', ways: 6, payout: 30,
-    resolve: function (d) { return isTriple(d) ? 30 : -1; } });
-  // 大小單雙（開圍骰通殺）
-  add({ id: 'small', group: 'main', label: '小', sub: '4 – 10', tone: 'small', ways: 105, payout: 1,
-    resolve: function (d) { return !isTriple(d) && sum(d) >= 4 && sum(d) <= 10 ? 1 : -1; } });
-  add({ id: 'odd', group: 'main', label: '單', sub: '總點單數', ways: 105, payout: 1,
-    resolve: function (d) { return !isTriple(d) && sum(d) % 2 === 1 ? 1 : -1; } });
-  add({ id: 'even', group: 'main', label: '雙', sub: '總點雙數', ways: 105, payout: 1,
-    resolve: function (d) { return !isTriple(d) && sum(d) % 2 === 0 ? 1 : -1; } });
-  add({ id: 'big', group: 'main', label: '大', sub: '11 – 17', tone: 'big', ways: 105, payout: 1,
-    resolve: function (d) { return !isTriple(d) && sum(d) >= 11 && sum(d) <= 17 ? 1 : -1; } });
-  // 長骰（指定對子，圍骰亦算中）
-  for (n = 1; n <= 6; n++) (function (v) {
-    add({ id: 'double' + v, group: 'double', label: '長 ' + v, ways: 16, payout: 10, dice: [v, v],
-      resolve: function (d) { return counts(d)[v] >= 2 ? 10 : -1; } });
-  })(n);
-  // 點數總和
-  for (n = 4; n <= 17; n++) (function (v) {
-    add({ id: 'total' + v, group: 'total', label: String(v), ways: WAYS[v], payout: TOTAL_PAY[v],
-      resolve: function (d) { return sum(d) === v ? TOTAL_PAY[v] : -1; } });
-  })(n);
-  // 二骰組合
-  for (i = 1; i <= 6; i++) for (j = i + 1; j <= 6; j++) (function (x, y) {
-    add({ id: 'combo' + x + y, group: 'combo', label: x + ' 和 ' + y, ways: 30, payout: 6, dice: [x, y],
-      resolve: function (d) { var m = counts(d); return m[x] >= 1 && m[y] >= 1 ? 6 : -1; } });
-  })(i, j);
-  // 單骰
-  for (n = 1; n <= 6; n++) (function (v) {
-    add({ id: 'single' + v, group: 'single', label: '單骰 ' + v, ways: 91, payout: 1, dice: [v],
-      oddsText: '1 / 2 / 3 : 1', ev: -17 / 216,
-      resolve: function (d) { var k = counts(d)[v]; return k > 0 ? k : -1; } });
-  })(n);
 
   /* ---------------- 籌碼 ---------------- */
   var CHIPS = [
@@ -111,7 +41,9 @@
     sound: false,
     open: null,               // 各注區分類是否展開（手機預設只開常用的）
     tourDone: false,
-    stats: { rounds: 0, wagered: 0, returned: 0, evSum: 0, dist: {}, groups: {} }
+    pt: 'standard',           // 使用中的賠率表
+    ptCustom: null,
+    stats: { rounds: 0, wagered: 0, returned: 0, evSum: 0, dist: {}, groups: {}, rS: 0, rS2: 0 }
   };
   var rolling = false;
 
@@ -120,7 +52,8 @@
       localStorage.setItem(STORE, JSON.stringify({
         balance: state.balance, chip: state.chip, last: state.last,
         road: state.road.slice(-60), sound: state.sound, stats: state.stats,
-        open: state.open, tourDone: state.tourDone
+        open: state.open, tourDone: state.tourDone,
+        pt: state.pt, ptCustom: state.ptCustom
       }));
     } catch (e) { /* 私密瀏覽或封鎖儲存時忽略 */ }
   }
@@ -131,6 +64,7 @@
       state.balance = o.balance; state.chip = o.chip || 25; state.last = o.last || {};
       state.road = o.road || []; state.sound = !!o.sound;
       state.open = o.open || null; state.tourDone = !!o.tourDone;
+      state.pt = o.pt || 'standard'; state.ptCustom = o.ptCustom || null;
       if (o.stats) state.stats = o.stats;
       if (!state.stats.dist) state.stats.dist = {};
       if (!state.stats.groups) state.stats.groups = {};
@@ -460,7 +394,7 @@
     var st = state.stats, id, bet, m, ret, rows = [], returned = 0, evRound = 0;
 
     for (id in state.bets) {
-      bet = BY_ID[id]; m = bet.resolve(dice);
+      bet = BY_ID[id]; m = netOf(bet, dice);
       ret = m > 0 ? state.bets[id] * (1 + m) : 0;
       returned += ret; evRound += state.bets[id] * bet.ev;
       rows.push({ id: id, label: bet.label, group: bet.group, stake: state.bets[id], net: ret - state.bets[id], won: m > 0, mult: m });
@@ -470,6 +404,8 @@
 
     state.balance += returned;
     st.rounds++; st.wagered += stake; st.returned += returned; st.evSum += evRound;
+    var ratio = returned / stake;                  // 這一局每一元本金拿回多少
+    st.rS = (st.rS || 0) + ratio; st.rS2 = (st.rS2 || 0) + ratio * ratio;
     var tot = sum(dice);
     st.dist[tot] = (st.dist[tot] || 0) + 1;
 
@@ -483,7 +419,7 @@
     // 標記中獎／落空的注區
     clearMarks();
     BETS.forEach(function (bt) {
-      var hit = bt.resolve(dice) > 0;
+      var hit = bt.win(dice) ? true : false;
       var el = cellEls[bt.id];
       if (hit) el.classList.add(state.bets[bt.id] ? 'win' : 'hit');
       else if (state.bets[bt.id]) el.classList.add('lost');
@@ -493,6 +429,7 @@
     renderResult(dice, tot, kind, rows, stake, returned, net);
     renderTable(); renderMeters(); renderRoad(); renderStats(); showSheet(dice, tot, kind, net); save();
     chime(net >= 0); buzz(net > 0 ? [22, 50, 22] : 14);
+    speak(kind === 'triple' ? ('圍骰，' + dice[0] + '點') : (tot + '點，' + (kind === 'big' ? '大' : '小')));
     if (net > 0) toast('本局 ' + signed(net) + '　派彩 ' + money(returned));
     else if (net < 0) toast('本局 ' + signed(net));
     if (state.balance <= 0 && !totalStake()) toast('籌碼用完了 — 到「統計」分頁按「重置牌局」再來一輪。');
@@ -625,6 +562,13 @@
     var net = st.returned - st.wagered;
     var ne = $('sNet'); ne.textContent = signed(net); ne.className = 'v num ' + netClass(net);
     $('sRtp').textContent = st.wagered ? pct(st.returned / st.wagered, 1) : '—';
+    var ci = $('sRtpCi');
+    if (st.rounds >= 2) {
+      var mean = st.rS / st.rounds;
+      var vr = (st.rS2 - st.rounds * mean * mean) / (st.rounds - 1);
+      var se = Math.sqrt(Math.max(vr, 0) / st.rounds);
+      ci.textContent = '95% 約 ±' + pct(1.96 * se, 1) + '，' + money(st.rounds) + ' 局';
+    } else ci.textContent = '派彩 ÷ 投注';
     $('sErtp').textContent = st.wagered ? pct(1 + st.evSum / st.wagered, 1) : '—';
 
     var tb = $('groupTable').querySelector('tbody');
@@ -722,7 +666,7 @@
       dice = rollDice();
       var r = 0;
       for (var k = 0; k < betIds.length; k++) {
-        id = betIds[k]; bet = BY_ID[id]; m = bet.resolve(dice);
+        id = betIds[k]; bet = BY_ID[id]; m = netOf(bet, dice);
         r += m > 0 ? state.bets[id] * (1 + m) : 0;
       }
       wag += stake; ret += r;
@@ -749,7 +693,7 @@
   function resetAll() {
     if (!window.confirm('重置牌局：餘額回到 ' + money(START) + '，統計、珠盤路全部清空。要繼續嗎？')) return;
     state.balance = START; state.bets = {}; state.stack = []; state.last = {}; state.road = [];
-    state.stats = { rounds: 0, wagered: 0, returned: 0, evSum: 0, dist: {}, groups: {} };
+    state.stats = { rounds: 0, wagered: 0, returned: 0, evSum: 0, dist: {}, groups: {}, rS: 0, rS2: 0 };
     $('plate').classList.add('idle');
     $('totalNum').textContent = '—';
     $('verdict').textContent = '請下注'; $('verdict').dataset.v = '';
@@ -759,6 +703,282 @@
     toast('已重置，餘額 ' + money(START) + '。');
   }
 
+
+
+  /* --------- 賠率表：切換與自訂 --------- */
+  var PT_ROWS = [
+    { k: 'anytriple', label: '全圍', hint: '常見 24–31', sec: '高賠注區' },
+    { k: 'triple', label: '圍骰（指定三同點）', hint: '常見 150–180' },
+    { k: 'double', label: '長骰（指定對子）', hint: '常見 8–11' },
+    { k: 'combo', label: '二骰組合', hint: '常見 5–6' },
+    { k: 't4', label: '點數 4 / 17', pair: [4, 17], sec: '點數總和' },
+    { k: 't5', label: '點數 5 / 16', pair: [5, 16] },
+    { k: 't6', label: '點數 6 / 15', pair: [6, 15] },
+    { k: 't7', label: '點數 7 / 14', pair: [7, 14] },
+    { k: 't8', label: '點數 8 / 13', pair: [8, 13] },
+    { k: 't9', label: '點數 9 / 12', pair: [9, 12] },
+    { k: 't10', label: '點數 10 / 11', pair: [10, 11] }
+  ];
+
+  function paytableById(id) {
+    if (id === 'custom') return state.ptCustom || (state.ptCustom = S.clonePaytable(S.STANDARD));
+    for (var i2 = 0; i2 < S.PAYTABLES.length; i2++) if (S.PAYTABLES[i2].id === id) return S.clonePaytable(S.PAYTABLES[i2]);
+    return S.clonePaytable(S.STANDARD);
+  }
+
+  function setPaytable(id, skipSave) {
+    state.pt = id;
+    S.applyPaytable(paytableById(id));
+    Array.prototype.forEach.call($('ptPick').children, function (el) {
+      el.setAttribute('aria-pressed', String(el.dataset.pt === id));
+    });
+    var pt = S.currentPaytable();
+    $('ptNote').textContent = id === 'custom'
+      ? '照你面前那張桌子印的賠率填進去，機率與莊家優勢會即時重算。單骰的 1／2／3 倍各家都一樣，所以固定不動。'
+      : pt.note;
+    $('ptEditor').hidden = id !== 'custom';
+    if (id === 'custom') buildPtEditor();
+    refreshOdds();
+    if (!skipSave) save();
+  }
+
+  function buildPtEditor() {
+    var pt = S.currentPaytable(), box = $('ptEditor');
+    box.innerHTML = PT_ROWS.map(function (r) {
+      var val = r.pair ? pt.totals[r.pair[0]] : pt[r.k];
+      return (r.sec ? '<div class="sec">' + r.sec + '</div>' : '') +
+        '<label class="f"><span>' + r.label + '</span>' +
+        '<em>' + (r.hint || '') + '</em>' +
+        '<input type="number" min="1" max="1000" step="1" value="' + val + '" data-pt-row="' + r.k +
+        '" inputmode="numeric"></label>';
+    }).join('') + '<button class="btn sm pt-reset" type="button" id="ptReset">還原成標準賠率</button>';
+    box.oninput = onPtInput;   // 重建時直接覆寫，不會疊監聽器
+    $('ptReset').onclick = function () {
+      state.ptCustom = S.clonePaytable(S.STANDARD);
+      S.applyPaytable(state.ptCustom);
+      buildPtEditor(); refreshOdds(); save();
+      toast('自訂賠率已還原成標準賠率。');
+    };
+  }
+
+  function onPtInput(e) {
+    var key = e.target.getAttribute && e.target.getAttribute('data-pt-row');
+    if (!key) return;
+    var v = Math.max(1, Math.min(1000, Math.round(Number(e.target.value) || 1)));
+    var pt = state.ptCustom, row = null;
+    for (var i2 = 0; i2 < PT_ROWS.length; i2++) if (PT_ROWS[i2].k === key) row = PT_ROWS[i2];
+    if (!row) return;
+    if (row.pair) { pt.totals[row.pair[0]] = v; pt.totals[row.pair[1]] = v; }
+    else pt[row.k] = v;
+    S.applyPaytable(pt);
+    refreshOdds();
+    save();
+  }
+
+  /* 賠率變了：檯面印刷、賠率表、教學卡片、期望值全部重畫 */
+  function refreshOdds() {
+    for (var id in cellEls) {
+      var bt = BY_ID[id], el = cellEls[id];
+      var o = el.querySelector('.odds');
+      if (o) o.textContent = bt.oddsText;
+      el.title = bt.label + ' · 賠 ' + bt.oddsText + ' · 中獎組合 ' + bt.ways + '/216（' + pct(bt.ways / 216) +
+        '）· 莊家優勢 ' + pct(bt.he);
+      el.setAttribute('aria-label', bt.label + '，賠 ' + bt.oddsText + '，莊家優勢 ' + pct(bt.he));
+    }
+    buildOddsTable();
+    buildLearn();
+    renderMeters();
+  }
+
+  /* --------- 投注系統實驗室 --------- */
+  var SYSTEMS = [
+    { id: 'flat', name: '平注', note: '每局都押一樣' },
+    { id: 'martingale', name: '馬丁格爾', note: '輸了加倍，贏了歸零' },
+    { id: 'paroli', name: '反馬丁格爾', note: '贏了加倍，連贏三把歸零' },
+    { id: 'dalembert', name: '達倫貝爾', note: '輸加一注，贏減一注' }
+  ];
+
+  function simSession(sysId, o, roll, betObj) {
+    var bank = o.bank, cur = o.unit, streak = 0, wagered = 0, maxBet = 0, busted = false, r;
+    for (r = 0; r < o.rounds; r++) {
+      var stake = Math.min(cur, o.limit, bank);
+      if (stake < 1) { busted = true; break; }
+      if (stake > maxBet) maxBet = stake;
+      wagered += stake;
+      var won = !!betObj.win(roll());
+      bank += won ? stake : -stake;
+      if (sysId === 'flat') cur = o.unit;
+      else if (sysId === 'martingale') cur = won ? o.unit : cur * 2;
+      else if (sysId === 'paroli') {
+        if (won) { streak++; cur = streak >= 3 ? (streak = 0, o.unit) : cur * 2; }
+        else { streak = 0; cur = o.unit; }
+      } else if (sysId === 'dalembert') cur = won ? Math.max(o.unit, cur - o.unit) : cur + o.unit;
+      if (bank < 1) { busted = true; break; }
+    }
+    return { bank: bank, wagered: wagered, maxBet: maxBet, busted: busted };
+  }
+
+  function median(arr) {
+    var a = arr.slice().sort(function (x, y) { return x - y; });
+    var m = Math.floor(a.length / 2);
+    return a.length % 2 ? a[m] : (a[m - 1] + a[m]) / 2;
+  }
+
+  var labResults = null, labPick = 'flat';
+
+  function runLab() {
+    var o = {
+      betId: $('labBet').value,
+      bank: clampNum($('labBank'), 10, 1000000, 1000),
+      unit: clampNum($('labUnit'), 1, 10000, 25),
+      rounds: clampNum($('labRounds'), 10, 2000, 200),
+      sessions: clampNum($('labSessions'), 100, 20000, 2000),
+      limit: clampNum($('labLimit'), 1, 1000000, 1000)
+    };
+    if (o.unit > o.bank) { toast('基礎注碼不能大於起始本金。'); return; }
+    var betObj = BY_ID[o.betId];
+    var seed = 0;
+    try { seed = crypto.getRandomValues(new Uint32Array(1))[0]; } catch (e) { seed = Date.now(); }
+
+    $('btnLab').disabled = true; $('btnLab').textContent = '模擬中…';
+    setTimeout(function () {
+      var out = SYSTEMS.map(function (sys, si) {
+        var roll = S.makeDiceRoller(S.makeRng(seed + si * 7919));
+        var banks = [], bust = 0, wag = 0, mx = 0, net = 0;
+        for (var s = 0; s < o.sessions; s++) {
+          var res = simSession(sys.id, o, roll, betObj);
+          banks.push(res.bank); wag += res.wagered; net += res.bank - o.bank;
+          if (res.busted) bust++;
+          if (res.maxBet > mx) mx = res.maxBet;
+        }
+        return {
+          sys: sys, banks: banks, bustRate: bust / o.sessions,
+          med: median(banks), mean: banks.reduce(function (a2, b2) { return a2 + b2; }, 0) / o.sessions,
+          wagered: wag / o.sessions, maxBet: mx, edge: wag ? net / wag : 0,
+          up: banks.filter(function (v) { return v > o.bank; }).length / o.sessions
+        };
+      });
+      labResults = { o: o, rows: out, bet: betObj };
+      labPick = 'flat';
+      renderLab();
+      $('btnLab').disabled = false; $('btnLab').textContent = '再跑一次';
+    }, 30);
+  }
+
+  function clampNum(el, lo, hi, dflt) {
+    var v = Math.round(Number(el.value));
+    if (!isFinite(v)) v = dflt;
+    v = Math.max(lo, Math.min(hi, v));
+    el.value = v;
+    return v;
+  }
+
+  function renderLab() {
+    var R = labResults; if (!R) return;
+    var o = R.o;
+    var rows = R.rows.map(function (r) {
+      return '<tr data-sys="' + r.sys.id + '"' + (r.sys.id === labPick ? ' class="on"' : '') + '>' +
+        '<td>' + r.sys.name + '</td>' +
+        '<td class="' + (r.bustRate > 0.02 ? 'neg' : '') + '">' + pct(r.bustRate, 1) + '</td>' +
+        '<td>' + money(r.med) + '</td>' +
+        '<td class="' + netClass(r.edge) + '">' + pct(r.edge) + '</td>' +
+        '<td>' + money(r.maxBet) + '</td></tr>';
+    }).join('');
+
+    var flat = R.rows[0], mart = R.rows[1];
+    var take = '四種系統的「損益 ÷ 總投注」全部落在 <b>' + pct(-R.bet.he) +
+      '</b> 附近——那就是「' + R.bet.label + '」的莊家優勢，<b>沒有任何一種下注法動得了它</b>。' +
+      '會變的只有分佈：馬丁格爾在 ' + money(o.rounds) + ' 局內破產的機率是 <b>' + pct(mart.bustRate, 1) +
+      '</b>，平注只有 ' + pct(flat.bustRate, 1) + '。';
+    take += mart.up > flat.up
+      ? '它換到的是比較常小贏：' + pct(mart.up, 1) + ' 的場次收在起始本金之上（平注 ' + pct(flat.up, 1) +
+        '）——但那些小贏，會被歸零的那幾場一次收回去。'
+      : '而在這組參數下，它連「比較常贏」都做不到：收在起始本金之上的場次只有 ' + pct(mart.up, 1) +
+        '，平注是 ' + pct(flat.up, 1) + '。把「每場局數」調短一點再跑，就會看到它短期好看的那一面。';
+    take += '<br><span class="lab-cap">「損益/投注」欄會有些許抖動：進階系統的投注額被少數幾筆大注主導，' +
+      '把「模擬場次」拉高就會更貼近理論值。</span>';
+
+    $('labOut').innerHTML =
+      '<div class="scroll" style="max-height:none;overflow-x:auto"><table class="lab-table" id="labTable">' +
+      '<thead><tr><th>系統</th><th>破產率</th><th>中位數本金</th><th>損益/投注</th><th>最大單注</th></tr></thead>' +
+      '<tbody>' + rows + '</tbody></table></div>' +
+      '<p class="lab-cap">' + money(o.sessions) + ' 場 × 每場最多 ' + money(o.rounds) + ' 局，押「' + R.bet.label +
+      '」，起始 ' + money(o.bank) + '、基礎注碼 ' + money(o.unit) + '、限紅 ' + money(o.limit) +
+      '。破產＝本金不足以再下一注；系統要求的注碼超過限紅或剩餘本金時，就押到上限／全押。' +
+      '點表格任一列可切換下方分佈圖。</p>' +
+      '<h2 style="margin:4px 0 6px">結束本金分佈</h2>' +
+      '<div class="chart-legend"><span><i style="background:#D2A24E"></i>' +
+      SYSTEMS.filter(function (s) { return s.id === labPick; })[0].name +
+      '</span><span><i style="background:#D9483C"></i>破產</span>' +
+      '<span style="color:var(--bone-3)">虛線＝起始本金</span></div>' +
+      '<div class="chart-wrap"><svg class="chart" id="labChart" viewBox="0 0 360 168" role="img" ' +
+      'aria-label="結束本金分佈"></svg></div>' +
+      '<div class="lab-take">' + take + '</div>';
+
+    $('labTable').addEventListener('click', function (e) {
+      var tr = e.target.closest && e.target.closest('tr[data-sys]');
+      if (!tr) return;
+      labPick = tr.dataset.sys; renderLab();
+    });
+    drawLabChart();
+  }
+
+  function drawLabChart() {
+    var R = labResults; if (!R) return;
+    var row = R.rows.filter(function (r) { return r.sys.id === labPick; })[0];
+    var banks = row.banks, start = R.o.bank;
+    var W = 360, H = 168, L = 34, Rp = 8, T = 10, B = 30;
+    var iw = W - L - Rp, ih = H - T - B;
+
+    var mx = 0;
+    for (var i2 = 0; i2 < banks.length; i2++) if (banks[i2] > mx) mx = banks[i2];
+    var top = Math.max(mx, start * 2), N = 16, w = top / N;
+    var bins = new Array(N + 1).fill(0);          // bins[0] = 破產（<1）
+    for (i2 = 0; i2 < banks.length; i2++) {
+      var v = banks[i2];
+      if (v < 1) { bins[0]++; continue; }
+      var b2 = Math.min(N, Math.floor(v / w) + 1);
+      bins[b2]++;
+    }
+    var maxCount = Math.max.apply(null, bins) || 1;
+    var bw = iw / (N + 1), s = '';
+
+    for (var g = 0; g <= 2; g++) {
+      var val = maxCount * g / 2, y = T + ih - (val / maxCount) * ih;
+      s += '<line x1="' + L + '" y1="' + y.toFixed(1) + '" x2="' + (W - Rp) + '" y2="' + y.toFixed(1) +
+        '" stroke="#20593C" stroke-width="1" opacity="' + (g === 0 ? '.9' : '.4') + '"/>' +
+        '<text x="' + (L - 6) + '" y="' + (y + 3.5).toFixed(1) + '" text-anchor="end" font-size="9" fill="#8FA396">' +
+        pct(val / banks.length, 0) + '</text>';
+    }
+    for (var k2 = 0; k2 <= N; k2++) {
+      var h2 = (bins[k2] / maxCount) * ih, x = L + k2 * bw;
+      var lo = k2 === 0 ? 0 : Math.round((k2 - 1) * w), hi = k2 === 0 ? 0 : Math.round(k2 * w);
+      s += '<g><title>' + (k2 === 0 ? '破產（本金歸零）' : money(lo) + ' – ' + money(hi)) + '：' +
+        pct(bins[k2] / banks.length, 1) + '（' + bins[k2] + ' 場）</title>' +
+        '<rect x="' + (x + bw * 0.14).toFixed(1) + '" y="' + (T + ih - h2).toFixed(1) + '" width="' +
+        (bw * 0.72).toFixed(1) + '" height="' + Math.max(h2, 0).toFixed(1) + '" rx="2" fill="' +
+        (k2 === 0 ? '#D9483C' : '#D2A24E') + '"/>' +
+        '<rect x="' + x.toFixed(1) + '" y="' + T + '" width="' + bw.toFixed(1) + '" height="' + ih +
+        '" fill="transparent"/></g>';
+    }
+    var sx = L + bw + (start / top) * (iw - bw);
+    s += '<line x1="' + sx.toFixed(1) + '" y1="' + T + '" x2="' + sx.toFixed(1) + '" y2="' + (T + ih) +
+      '" stroke="#B9C6BB" stroke-width="1" stroke-dasharray="3 3"/>';
+    s += '<text x="' + L + '" y="' + (H - 4) + '" text-anchor="start" font-size="9" fill="#D9483C">破產</text>';
+    s += '<text x="' + (W - Rp) + '" y="' + (H - 4) + '" text-anchor="end" font-size="9" fill="#8FA396">結束本金 →</text>';
+    $('labChart').innerHTML = s;
+  }
+
+  /* --------- 語音報點 --------- */
+  function speak(text) {
+    if (!state.sound || typeof speechSynthesis === 'undefined') return;
+    try {
+      var u = new SpeechSynthesisUtterance(text);
+      u.lang = 'zh-TW'; u.rate = 1.05;
+      speechSynthesis.cancel();
+      speechSynthesis.speak(u);
+    } catch (e) { /* 不支援就算了 */ }
+  }
 
   /* --------- 教學導覽 --------- */
   var TOUR = [
@@ -790,8 +1010,11 @@
     { el: '.road-wrap', title: '⑥ 珠盤路',
       body: '每局結果依序記在這裡：<b>紅大、藍小、綠圍骰</b>。提醒一句——骰子沒有記憶，路紋好看，但不能拿來預測下一局。' },
 
-    { el: '.tabs', title: '⑦ 另外三個分頁',
-      body: '<b>統計</b>：實際 vs 理論返還率，還能跑 1,000 局快速模擬。<br><b>賠率</b>：所有注區依莊家優勢排序。<br><b>教學</b>：完整玩法、常見迷思、練習建議。' },
+    { el: '.tabs', title: '⑦ 另外四個分頁',
+      body: '<b>統計</b>：實際 vs 理論返還率，還能跑 1,000 局快速模擬。<br>' +
+        '<b>實驗室</b>：把馬丁格爾這類投注系統跑幾千場，看它們到底改變了什麼。<br>' +
+        '<b>賠率</b>：所有注區依莊家優勢排序，也可以改成你面前那張桌子的賠率。<br>' +
+        '<b>教學</b>：完整玩法、常見迷思、練習建議。' },
 
     { title: '就這樣，開始玩吧',
       body: '隨時按標題列的<b>「教學導覽」</b>可以再看一次。<br>手機建議用瀏覽器選單<b>「加入主畫面」</b>裝起來，離線也能玩。' }
@@ -1021,6 +1244,13 @@
       state.open = { triple: !narrow, main: true, double: !narrow, total: true, combo: !narrow, single: !narrow };
     }
     applyBands();
+
+    setPaytable(state.pt || 'standard', true);
+    $('ptPick').addEventListener('click', function (e) {
+      var b2 = e.target.closest && e.target.closest('.pt');
+      if (b2) setPaytable(b2.dataset.pt);
+    });
+    $('btnLab').addEventListener('click', runLab);
 
     setChip(state.chip);
     $('railLimit').textContent = '1 – ' + money(SPOT_MAX);

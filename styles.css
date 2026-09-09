@@ -521,6 +521,65 @@ table{border-collapse:collapse}
 .btn.gold-line{border-color:var(--gold-dim);color:var(--gold)}
 .btn.gold-line:hover:not(:disabled){border-color:var(--gold)}
 
+/* ---------- 賠率表切換 --------------------------------------------------- */
+.pt-pick{display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap}
+.pt{
+  flex:1 1 auto;padding:7px 10px;border-radius:var(--r-sm);font-size:12.5px;font-weight:700;
+  border:1px solid var(--seam);background:rgba(0,0,0,.24);color:var(--bone-2);
+  touch-action:manipulation;white-space:nowrap;
+}
+.pt:hover{border-color:var(--gold-dim);color:var(--bone)}
+.pt[aria-pressed="true"]{border-color:var(--gold);color:var(--gold);background:rgba(224,182,92,.1)}
+.pt-note{margin:0 0 10px;font-size:12px;color:var(--bone-3);line-height:1.6}
+.pt-editor{
+  display:grid;grid-template-columns:minmax(0,1fr);gap:5px;
+  margin-bottom:12px;padding:10px;border-radius:var(--r-md);
+  border:1px solid var(--seam-soft);background:rgba(0,0,0,.24);
+}
+.pt-editor .sec{
+  margin-top:4px;font-size:10px;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--gold-dim);font-weight:700;
+}
+.pt-editor .sec:first-child{margin-top:0}
+.pt-reset{margin-top:6px;justify-self:start;padding:6px 12px;font-size:12px}
+.pt-editor .f{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--bone-2)}
+.pt-editor .f span{flex:1 1 auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pt-editor .f em{flex:0 0 auto;font-style:normal;font-size:10px;color:var(--bone-3);font-variant-numeric:tabular-nums;min-width:46px;text-align:right}
+input[type="number"],select{
+  width:64px;flex:0 0 auto;padding:5px 6px;border-radius:var(--r-sm);
+  border:1px solid var(--seam);background:rgba(0,0,0,.4);color:var(--bone);
+  font:inherit;font-size:13px;font-variant-numeric:tabular-nums;text-align:right;
+}
+select{width:auto;text-align:left}
+input[type="number"]:focus,select:focus{border-color:var(--gold);outline:none}
+
+/* ---------- 投注系統實驗室 ----------------------------------------------- */
+.lab-form{
+  display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 10px;margin-bottom:12px;
+  padding:11px;border-radius:var(--r-md);border:1px solid var(--seam-soft);background:rgba(0,0,0,.24);
+}
+.lab-form .f{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:12px;color:var(--bone-2)}
+.btn.lab-go{width:100%;margin-bottom:12px;font-size:15px;letter-spacing:.14em}
+.lab-out{display:flex;flex-direction:column;gap:10px}
+.lab-table{width:100%;font-size:12px}
+.lab-table th{
+  padding:6px 5px;text-align:right;font-size:10px;letter-spacing:.08em;color:var(--gold-dim);font-weight:700;
+  border-bottom:1px solid var(--seam);
+}
+.lab-table th:first-child{text-align:left}
+.lab-table td{padding:7px 5px;text-align:right;border-bottom:1px solid rgba(32,89,60,.3);font-variant-numeric:tabular-nums}
+.lab-table td:first-child{text-align:left;font-weight:700;color:var(--bone)}
+.lab-table tr{cursor:pointer}
+.lab-table tbody tr:hover td{background:rgba(224,182,92,.06)}
+.lab-table tr.on td{background:rgba(224,182,92,.12)}
+.lab-table tr.on td:first-child{color:var(--gold)}
+.lab-take{
+  padding:11px 12px;border-radius:var(--r-md);font-size:13px;line-height:1.7;
+  border:1px solid var(--gold-dim);background:rgba(224,182,92,.07);color:var(--bone-2);
+}
+.lab-take b{color:var(--gold)}
+.lab-cap{font-size:11px;color:var(--bone-3);line-height:1.6}
+
 /* ---------- responsive -------------------------------------------------- */
 @media (max-width:1120px){
   .board{grid-template-columns:minmax(0,1fr)}
@@ -532,6 +591,10 @@ table{border-collapse:collapse}
   /* 開骰後把結果推到眼前：此時檯面通常已經捲到下方，骰盅看不見 */
   .sheet{display:flex;bottom:200px}
   .band-head{padding:8px 4px;margin-bottom:5px}
+  .tabs{overflow-x:auto;scrollbar-width:none;-ms-overflow-style:none}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{flex:0 0 auto;padding:7px 9px;font-size:12.5px}
+  .lab-form{grid-template-columns:minmax(0,1fr)}
   .band-head h3{font-size:14px}
   .road{grid-template-rows:repeat(2,22px)}
   .rail{padding:10px 12px;gap:12px}

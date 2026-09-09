@@ -108,6 +108,7 @@
         <div class="tabs" role="tablist">
           <button class="tab" role="tab" id="tab-round" aria-controls="p-round" aria-selected="true">本局</button>
           <button class="tab" role="tab" id="tab-stats" aria-controls="p-stats" aria-selected="false">統計</button>
+          <button class="tab" role="tab" id="tab-lab" aria-controls="p-lab" aria-selected="false">實驗室</button>
           <button class="tab" role="tab" id="tab-odds" aria-controls="p-odds" aria-selected="false">賠率</button>
           <button class="tab" role="tab" id="tab-learn" aria-controls="p-learn" aria-selected="false">教學</button>
         </div>
@@ -124,7 +125,7 @@
           <div class="stat-grid">
             <div class="meter"><div class="k">總投注</div><div class="v num" id="sWager">0</div></div>
             <div class="meter"><div class="k">淨損益</div><div class="v num" id="sNet">0</div></div>
-            <div class="meter"><div class="k">實際返還率</div><div class="v num" id="sRtp">—</div><div class="sub">派彩 ÷ 投注</div></div>
+            <div class="meter"><div class="k">實際返還率</div><div class="v num" id="sRtp">—</div><div class="sub" id="sRtpCi">派彩 ÷ 投注</div></div>
             <div class="meter"><div class="k">理論返還率</div><div class="v num" id="sErtp">—</div><div class="sub">依你下的注加權</div></div>
           </div>
 
@@ -149,8 +150,47 @@
           </div>
         </div>
 
+        <!-- 實驗室 -->
+        <div class="tabpanel" role="tabpanel" id="p-lab" aria-labelledby="tab-lab" hidden>
+          <p class="empty" style="padding:0 0 10px">
+            拿同一筆本金、同一個注區，讓四種投注系統各跑幾千場，看差別到底在哪。
+            <b>先猜一下哪一種會贏</b>，再按開始。
+          </p>
+
+          <div class="lab-form">
+            <label class="f"><span>注區</span>
+              <select id="labBet">
+                <option value="big">大</option>
+                <option value="small">小</option>
+                <option value="odd">單</option>
+                <option value="even">雙</option>
+              </select>
+            </label>
+            <label class="f"><span>起始本金</span><input id="labBank" type="number" min="10" max="1000000" step="10" value="1000" inputmode="numeric"></label>
+            <label class="f"><span>基礎注碼</span><input id="labUnit" type="number" min="1" max="10000" step="1" value="25" inputmode="numeric"></label>
+            <label class="f"><span>每場局數</span><input id="labRounds" type="number" min="10" max="2000" step="10" value="200" inputmode="numeric"></label>
+            <label class="f"><span>模擬場次</span><input id="labSessions" type="number" min="100" max="20000" step="100" value="2000" inputmode="numeric"></label>
+            <label class="f"><span>單注限紅</span><input id="labLimit" type="number" min="1" max="1000000" step="100" value="1000" inputmode="numeric"></label>
+          </div>
+
+          <button class="btn primary lab-go" id="btnLab" type="button">開始模擬</button>
+
+          <div id="labOut" class="lab-out">
+            <p class="empty">四種系統：<b>平注</b>（每局都押一樣）、<b>馬丁格爾</b>（輸了加倍、贏了歸零）、
+            <b>反馬丁格爾</b>（贏了加倍、連贏三把歸零）、<b>達倫貝爾</b>（輸加一注、贏減一注）。<br>
+            只開放大小單雙，因為這些系統的前提就是接近一賠一的注區。</p>
+          </div>
+        </div>
+
         <!-- 賠率 -->
         <div class="tabpanel" role="tabpanel" id="p-odds" aria-labelledby="tab-odds" hidden>
+          <div class="pt-pick" id="ptPick" role="group" aria-label="賠率表">
+            <button class="pt" type="button" data-pt="standard" aria-pressed="true">標準賠率</button>
+            <button class="pt" type="button" data-pt="tight" aria-pressed="false">較低賠率示例</button>
+            <button class="pt" type="button" data-pt="custom" aria-pressed="false">自訂</button>
+          </div>
+          <p class="pt-note" id="ptNote"></p>
+          <div class="pt-editor" id="ptEditor" hidden></div>
           <p class="empty" style="padding:0 0 10px">共 216 種等機率結果（6³）。莊家優勢越低，長期越不吃虧。</p>
           <div class="scroll">
             <table class="odds-table" id="oddsTable">
@@ -201,7 +241,8 @@
 
           <h3>三個常見迷思</h3>
           <p><b>「連開五把小，該開大了。」</b><br>骰子沒有記憶。每一局開大的機率都是 48.61%，跟前面開什麼完全無關。珠盤路好看，但沒有預測力。</p>
-          <p><b>「輸了就加倍，總會贏回來。」</b><br>限紅和你的本金都是有限的：連輸八把就要押 256 倍。這個策略只是把「常常小贏」換成「偶爾大破產」，長期期望值一分錢都沒改善。</p>
+          <p><b>「輸了就加倍，總會贏回來。」</b><br>限紅和你的本金都是有限的：連輸八把就要押 256 倍。這個策略只是把「常常小贏」換成「偶爾大破產」，長期期望值一分錢都沒改善。
+          <br>別聽我說，去<b>「實驗室」分頁</b>把四種投注系統各跑幾千場：你會看到它們的「損益 ÷ 總投注」全部黏在同一個數字上，只有破產率天差地遠。</p>
           <p><b>「押滿所有注區就穩賺。」</b><br>每一個注區的期望值都是負的，加起來只會更負。押越多區只是讓輸得更平穩而已。</p>
 
           <h3>建議這樣練</h3>
@@ -211,6 +252,10 @@
             <li>用<b>快速模擬 1,000 局</b>對照兩者——短期運氣的雜訊在一千局後就蓋不過莊家優勢了。</li>
             <li>最後翻「賠率」分頁，把所有注區的莊家優勢從低到高看一次。</li>
           </ol>
+
+          <h3>換成你要去的那張桌</h3>
+          <p>「賠率」分頁可以切換賠率表，也能<b>自訂</b>——照你面前檯面印的數字填進去，所有機率、莊家優勢、檯面印刷和期望值都會即時重算。</p>
+          <p>差別有多大？二骰組合賠 6:1 時莊家優勢是 2.78%（全場最好的注之一），賠 <b>5:1 就變成 16.67%</b>。同一個格子、同一個玩法，只差檯面上印的一個數字。所以進賭場前一定要看檯面。</p>
 
           <h3>操作</h3>
           <ul>
@@ -250,6 +295,7 @@
 </div>
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="./bets.js"></script>
 <script src="./app.js"></script>
 </body>
 </html>

@@ -1,6 +1,6 @@
 /* 骰寶練習桌 — service worker
    改版時把 VERSION 加一，舊快取會在啟用時清掉。 */
-var VERSION = 'v3';
+var VERSION = 'v4';
 var SHELL = 'sicbo-shell-' + VERSION;
 var RUNTIME = 'sicbo-runtime-' + VERSION;
 
@@ -10,6 +10,7 @@ var ASSETS = [
   './',
   './index.html',
   './styles.css',
+  './bets.js',
   './app.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
