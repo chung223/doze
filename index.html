@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>骰寶練習桌</title>
+<meta name="description" content="完整賠率的骰寶練習桌：真骰子動畫、珠盤路、即時期望值與莊家優勢分析。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@700;900&display=swap">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div class="shell">
+
+  <header class="rail">
+    <div class="brand">
+      <h1>骰寶練習桌</h1>
+      <span class="tag">Sic Bo · Practice</span>
+    </div>
+    <div class="rail-stat"><span class="k">限紅／注區</span><span class="v num" id="railLimit">1 – 1,000</span></div>
+    <div class="rail-stat"><span class="k">已開局數</span><span class="v num" id="railRounds">0</span></div>
+    <div class="rail-stat"><span class="k">累計損益</span><span class="v num gold" id="railNet">0</span></div>
+    <button class="btn sm" id="btnSound" type="button" aria-pressed="false">音效：關</button>
+  </header>
+
+  <div class="board">
+    <!-- ================= felt ================= -->
+    <main class="felt">
+      <section class="stage">
+        <div class="dome" id="dome" aria-live="polite" aria-label="骰盅">
+          <div class="die" id="die0"></div>
+          <div class="die" id="die1"></div>
+          <div class="die" id="die2"></div>
+        </div>
+
+        <div class="readout">
+          <div class="total-plate idle" id="plate">
+            <span class="k">Total</span>
+            <span class="total num" id="totalNum">—</span>
+            <span class="verdict" id="verdict">請下注</span>
+          </div>
+
+          <div class="road-wrap">
+            <div class="road-head">
+              <h2>珠盤路</h2>
+              <div class="legend">
+                <span><i style="background:#D9483C"></i>大</span>
+                <span><i style="background:#4C9BD6"></i>小</span>
+                <span><i style="background:#32A87A"></i>圍</span>
+              </div>
+            </div>
+            <div class="road" id="road"><span class="road-empty">開骰後，每局結果會依序記在這裡（由左至右、由上而下）。</span></div>
+          </div>
+        </div>
+      </section>
+
+      <div id="layout"></div>
+    </main>
+
+    <!-- ================= console ================= -->
+    <aside class="console">
+      <section class="panel dock" id="dock">
+        <div class="meters">
+          <div class="meter">
+            <div class="k">餘額</div>
+            <div class="v num gold" id="mBalance">1,000</div>
+            <div class="sub" id="mBalanceSub">起始 1,000</div>
+          </div>
+          <div class="meter">
+            <div class="k">本局總注</div>
+            <div class="v num" id="mStake">0</div>
+            <div class="sub" id="mStakeSub">0 個注區</div>
+          </div>
+          <div class="meter">
+            <div class="k">本局期望值</div>
+            <div class="v num" id="mEv">0</div>
+            <div class="sub" id="mEvSub">尚未下注</div>
+          </div>
+        </div>
+
+        <div class="tray" id="tray" role="group" aria-label="籌碼面額"></div>
+
+        <div class="actions">
+          <button class="btn primary" id="btnRoll" type="button">開　骰</button>
+          <button class="btn sm" id="btnRepeat" type="button">重複下注</button>
+          <button class="btn sm" id="btnUndo" type="button">撤銷一注</button>
+          <button class="btn sm" id="btnClear" type="button">清除全部</button>
+          <button class="btn sm hide-sm" id="btnDouble" type="button">加倍</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" id="tab-round" aria-controls="p-round" aria-selected="true">本局</button>
+          <button class="tab" role="tab" id="tab-stats" aria-controls="p-stats" aria-selected="false">統計</button>
+          <button class="tab" role="tab" id="tab-odds" aria-controls="p-odds" aria-selected="false">賠率</button>
+          <button class="tab" role="tab" id="tab-help" aria-controls="p-help" aria-selected="false">玩法</button>
+        </div>
+
+        <!-- 本局 -->
+        <div class="tabpanel" role="tabpanel" id="p-round" aria-labelledby="tab-round">
+          <div class="rows" id="roundRows">
+            <p class="empty">先在右側選一個籌碼面額，再點桌面上的注區下注，然後按「開骰」。<br>在注區上按右鍵（手機長按）可退回一注。</p>
+          </div>
+        </div>
+
+        <!-- 統計 -->
+        <div class="tabpanel" role="tabpanel" id="p-stats" aria-labelledby="tab-stats" hidden>
+          <div class="stat-grid">
+            <div class="meter"><div class="k">總投注</div><div class="v num" id="sWager">0</div></div>
+            <div class="meter"><div class="k">淨損益</div><div class="v num" id="sNet">0</div></div>
+            <div class="meter"><div class="k">實際返還率</div><div class="v num" id="sRtp">—</div><div class="sub">派彩 ÷ 投注</div></div>
+            <div class="meter"><div class="k">理論返還率</div><div class="v num" id="sErtp">—</div><div class="sub">依你下的注加權</div></div>
+          </div>
+
+          <h2>點數分佈：實際 vs 理論</h2>
+          <div class="chart-legend">
+            <span><i style="background:#D2A24E"></i>實際（<span class="num" id="chartN">0</span> 局）</span>
+            <span><i style="background:#2F6E4C;box-shadow:inset 0 0 0 1px #4B8E68"></i>理論機率</span>
+          </div>
+          <div class="chart-wrap"><svg class="chart" id="chart" viewBox="0 0 360 168" role="img" aria-label="三顆骰子點數總和的實際與理論分佈"></svg></div>
+
+          <h2 style="margin-top:14px">各注區成績</h2>
+          <div class="scroll" style="max-height:230px">
+            <table class="odds-table" id="groupTable">
+              <thead><tr><th>注區</th><th>局數</th><th>投注</th><th>淨損益</th></tr></thead>
+              <tbody><tr><td colspan="4" style="color:var(--bone-3);text-align:left">尚無紀錄。</td></tr></tbody>
+            </table>
+          </div>
+
+          <div class="actions" style="margin-top:12px">
+            <button class="btn sm" id="btnSim" type="button">快速模擬 1,000 局</button>
+            <button class="btn sm" id="btnReset" type="button">重置牌局</button>
+          </div>
+        </div>
+
+        <!-- 賠率 -->
+        <div class="tabpanel" role="tabpanel" id="p-odds" aria-labelledby="tab-odds" hidden>
+          <p class="empty" style="padding:0 0 10px">共 216 種等機率結果（6³）。莊家優勢越低，長期越不吃虧。</p>
+          <div class="scroll">
+            <table class="odds-table" id="oddsTable">
+              <thead><tr><th>注區</th><th>賠率</th><th>組合</th><th>機率</th><th>莊家優勢</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 玩法 -->
+        <div class="tabpanel prose" role="tabpanel" id="p-help" aria-labelledby="tab-help" hidden>
+          <h3>怎麼玩</h3>
+          <p>荷官搖三顆骰子，你在開骰前把籌碼放在任意注區上，可以同時押很多區。開出的點數決定哪些注區中獎。</p>
+          <ul>
+            <li><b>大</b>＝總點 11–17、<b>小</b>＝總點 4–10，但 <b>開圍骰（三顆同點）通殺</b>，大小單雙全輸。</li>
+            <li><b>單／雙</b>看總點的奇偶，同樣遇圍骰通殺。</li>
+            <li><b>圍骰</b>指定三顆同點（如三個 5），<b>全圍</b>是任意三同點。</li>
+            <li><b>長骰</b>（對子）指定點數至少出現兩次；<b>二骰組合</b>指定兩個不同點數各出現至少一次。</li>
+            <li><b>單骰</b>買一個點數，出現 1／2／3 次分別賠 1／2／3 倍。</li>
+          </ul>
+
+          <h3>這個練習桌想讓你看見什麼</h3>
+          <p>每次下注時，「本局期望值」會即時算出<b>這組注長期平均會賠掉多少</b>。同樣押 100 元：押大只期望輸 2.78 元，押點數 9 卻期望輸 18.98 元。開骰前就能看到差別。</p>
+          <p>「統計」分頁的<b>快速模擬 1,000 局</b>會用你目前的注碼連跑一千局，最能感受理論與短期運氣的落差。</p>
+
+          <h3>賠率版本</h3>
+          <p>採常見的標準賠率表（全圍 30:1、圍骰 180:1、長骰 10:1、二骰組合 6:1）。各家賭場略有不同，開桌前記得看檯面印的賠率——同一個注區賠率差一級，莊家優勢可能差十個百分點。</p>
+
+          <h3>快捷鍵</h3>
+          <p><code>空白鍵</code> 開骰 · <code>R</code> 重複下注 · <code>Z</code> 撤銷 · <code>C</code> 清除 · <code>1</code>–<code>5</code> 切換籌碼</p>
+
+          <h3>亂數</h3>
+          <p>骰子點數以瀏覽器的 <code>crypto.getRandomValues</code> 產生，並用拒絕採樣去掉取模偏差，六面完全等機率。這裡只有練習籌碼，沒有真錢。</p>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <p class="foot">
+    練習用途，非賭博平台，籌碼無任何價值。<b>骰寶的每一個注區長期期望值都是負的</b>——這個桌子是拿來理解賠率的，不是拿來找必勝法的。
+  </p>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="app.js"></script>
+</body>
+</html>
