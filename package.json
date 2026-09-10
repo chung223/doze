@@ -1,0 +1,11 @@
+{
+  "name": "sicbo-practice-table",
+  "version": "1.0.0",
+  "private": true,
+  "description": "骰寶練習桌 — a static Sic Bo practice table with live house-edge maths",
+  "scripts": {
+    "test": "node --test",
+    "start": "npx --yes http-server -p 8080 -c-1 ."
+  },
+  "license": "MIT"
+}

@@ -1,0 +1,301 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>骰寶練習桌</title>
+<meta name="description" content="完整賠率的骰寶練習桌：互動教學、真骰子、珠盤路，下注時即時顯示長期期望值與莊家優勢。">
+<meta name="theme-color" content="#0C2317">
+<meta name="color-scheme" content="dark">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+<link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="骰寶練習">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400..900&family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@700;900&display=swap">
+<link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+<div class="shell">
+
+  <header class="rail">
+    <div class="brand">
+      <h1>骰寶練習桌</h1>
+      <span class="tag">Sic Bo · Practice</span>
+    </div>
+    <div class="rail-stat"><span class="k">限紅／注區</span><span class="v num" id="railLimit">1 – 1,000</span></div>
+    <div class="rail-stat"><span class="k">已開局數</span><span class="v num" id="railRounds">0</span></div>
+    <div class="rail-stat"><span class="k">累計損益</span><span class="v num gold" id="railNet">0</span></div>
+    <div class="rail-tools">
+      <button class="btn sm gold-line" id="btnTour" type="button">教學導覽</button>
+      <button class="btn sm" id="btnInstall" type="button" hidden>安裝到主畫面</button>
+      <button class="btn sm gold-line" id="btnUpdate" type="button" hidden>有新版本</button>
+      <button class="btn sm" id="btnSound" type="button" aria-pressed="false">音效：關</button>
+    </div>
+  </header>
+
+  <div class="board">
+    <!-- ================= felt ================= -->
+    <main class="felt">
+      <section class="stage">
+        <div class="dome" id="dome" aria-live="polite" aria-label="骰盅">
+          <div class="die" id="die0"></div>
+          <div class="die" id="die1"></div>
+          <div class="die" id="die2"></div>
+        </div>
+
+        <div class="readout">
+          <div class="total-plate idle" id="plate">
+            <span class="k">Total</span>
+            <span class="total num" id="totalNum">—</span>
+            <span class="verdict" id="verdict">請下注</span>
+          </div>
+
+          <div class="road-wrap">
+            <div class="road-head">
+              <h2>珠盤路</h2>
+              <div class="legend">
+                <span><i style="background:#D9483C"></i>大</span>
+                <span><i style="background:#4C9BD6"></i>小</span>
+                <span><i style="background:#32A87A"></i>圍</span>
+              </div>
+            </div>
+            <div class="road is-empty" id="road"><span class="road-empty">開骰後，每局結果會依序記在這裡（由左至右、由上而下）。</span></div>
+          </div>
+        </div>
+      </section>
+
+      <div id="layout"></div>
+    </main>
+
+    <!-- ================= console ================= -->
+    <aside class="console">
+      <section class="panel dock" id="dock">
+        <div class="meters">
+          <div class="meter">
+            <div class="k">餘額</div>
+            <div class="v num gold" id="mBalance">1,000</div>
+            <div class="sub" id="mBalanceSub">起始 1,000</div>
+          </div>
+          <div class="meter">
+            <div class="k">本局總注</div>
+            <div class="v num" id="mStake">0</div>
+            <div class="sub" id="mStakeSub">0 個注區</div>
+          </div>
+          <div class="meter" id="evMeter">
+            <div class="k">本局期望值</div>
+            <div class="v num" id="mEv">0</div>
+            <div class="sub" id="mEvSub">尚未下注</div>
+          </div>
+        </div>
+
+        <div class="tray" id="tray" role="group" aria-label="籌碼面額"></div>
+
+        <div class="actions">
+          <button class="btn primary" id="btnRoll" type="button">開　骰</button>
+          <button class="btn sm" id="btnRepeat" type="button">重複下注</button>
+          <button class="btn sm" id="btnUndo" type="button">撤銷一注</button>
+          <button class="btn sm" id="btnClear" type="button">清除全部</button>
+          <button class="btn sm hide-sm" id="btnDouble" type="button">加倍</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="tabs" role="tablist">
+          <button class="tab" role="tab" id="tab-round" aria-controls="p-round" aria-selected="true">本局</button>
+          <button class="tab" role="tab" id="tab-stats" aria-controls="p-stats" aria-selected="false">統計</button>
+          <button class="tab" role="tab" id="tab-lab" aria-controls="p-lab" aria-selected="false">實驗室</button>
+          <button class="tab" role="tab" id="tab-odds" aria-controls="p-odds" aria-selected="false">賠率</button>
+          <button class="tab" role="tab" id="tab-learn" aria-controls="p-learn" aria-selected="false">教學</button>
+        </div>
+
+        <!-- 本局 -->
+        <div class="tabpanel" role="tabpanel" id="p-round" aria-labelledby="tab-round">
+          <div class="rows" id="roundRows">
+            <p class="empty">先選一個籌碼面額，再點桌面上的注區下注，然後按「開骰」。<br>在注區上按右鍵（手機長按）可退回一注。<br>第一次玩就按右上角的<b>「教學導覽」</b>，四十秒走完一局。</p>
+          </div>
+        </div>
+
+        <!-- 統計 -->
+        <div class="tabpanel" role="tabpanel" id="p-stats" aria-labelledby="tab-stats" hidden>
+          <div class="stat-grid">
+            <div class="meter"><div class="k">總投注</div><div class="v num" id="sWager">0</div></div>
+            <div class="meter"><div class="k">淨損益</div><div class="v num" id="sNet">0</div></div>
+            <div class="meter"><div class="k">實際返還率</div><div class="v num" id="sRtp">—</div><div class="sub" id="sRtpCi">派彩 ÷ 投注</div></div>
+            <div class="meter"><div class="k">理論返還率</div><div class="v num" id="sErtp">—</div><div class="sub">依你下的注加權</div></div>
+          </div>
+
+          <h2>點數分佈：實際 vs 理論</h2>
+          <div class="chart-legend">
+            <span><i style="background:#D2A24E"></i>實際（<span class="num" id="chartN">0</span> 局）</span>
+            <span><i style="background:#2F6E4C;box-shadow:inset 0 0 0 1px #4B8E68"></i>理論機率</span>
+          </div>
+          <div class="chart-wrap"><svg class="chart" id="chart" viewBox="0 0 360 168" role="img" aria-label="三顆骰子點數總和的實際與理論分佈"></svg></div>
+
+          <h2 style="margin-top:14px">各注區成績</h2>
+          <div class="scroll" style="max-height:230px">
+            <table class="odds-table" id="groupTable">
+              <thead><tr><th>注區</th><th>局數</th><th>投注</th><th>淨損益</th></tr></thead>
+              <tbody><tr><td colspan="4" style="color:var(--bone-3);text-align:left">尚無紀錄。</td></tr></tbody>
+            </table>
+          </div>
+
+          <div class="actions" style="margin-top:12px">
+            <button class="btn sm" id="btnSim" type="button">快速模擬 1,000 局</button>
+            <button class="btn sm" id="btnReset" type="button">重置牌局</button>
+          </div>
+        </div>
+
+        <!-- 實驗室 -->
+        <div class="tabpanel" role="tabpanel" id="p-lab" aria-labelledby="tab-lab" hidden>
+          <p class="empty" style="padding:0 0 10px">
+            拿同一筆本金、同一個注區，讓四種投注系統各跑幾千場，看差別到底在哪。
+            <b>先猜一下哪一種會贏</b>，再按開始。
+          </p>
+
+          <div class="lab-form">
+            <label class="f"><span>注區</span>
+              <select id="labBet">
+                <option value="big">大</option>
+                <option value="small">小</option>
+                <option value="odd">單</option>
+                <option value="even">雙</option>
+              </select>
+            </label>
+            <label class="f"><span>起始本金</span><input id="labBank" type="number" min="10" max="1000000" step="10" value="1000" inputmode="numeric"></label>
+            <label class="f"><span>基礎注碼</span><input id="labUnit" type="number" min="1" max="10000" step="1" value="25" inputmode="numeric"></label>
+            <label class="f"><span>每場局數</span><input id="labRounds" type="number" min="10" max="2000" step="10" value="200" inputmode="numeric"></label>
+            <label class="f"><span>模擬場次</span><input id="labSessions" type="number" min="100" max="20000" step="100" value="2000" inputmode="numeric"></label>
+            <label class="f"><span>單注限紅</span><input id="labLimit" type="number" min="1" max="1000000" step="100" value="1000" inputmode="numeric"></label>
+          </div>
+
+          <button class="btn primary lab-go" id="btnLab" type="button">開始模擬</button>
+
+          <div id="labOut" class="lab-out">
+            <p class="empty">四種系統：<b>平注</b>（每局都押一樣）、<b>馬丁格爾</b>（輸了加倍、贏了歸零）、
+            <b>反馬丁格爾</b>（贏了加倍、連贏三把歸零）、<b>達倫貝爾</b>（輸加一注、贏減一注）。<br>
+            只開放大小單雙，因為這些系統的前提就是接近一賠一的注區。</p>
+          </div>
+        </div>
+
+        <!-- 賠率 -->
+        <div class="tabpanel" role="tabpanel" id="p-odds" aria-labelledby="tab-odds" hidden>
+          <div class="pt-pick" id="ptPick" role="group" aria-label="賠率表">
+            <button class="pt" type="button" data-pt="standard" aria-pressed="true">標準賠率</button>
+            <button class="pt" type="button" data-pt="tight" aria-pressed="false">較低賠率示例</button>
+            <button class="pt" type="button" data-pt="custom" aria-pressed="false">自訂</button>
+          </div>
+          <p class="pt-note" id="ptNote"></p>
+          <div class="pt-editor" id="ptEditor" hidden></div>
+          <p class="empty" style="padding:0 0 10px">共 216 種等機率結果（6³）。莊家優勢越低，長期越不吃虧。</p>
+          <div class="scroll">
+            <table class="odds-table" id="oddsTable">
+              <thead><tr><th>注區</th><th>賠率</th><th>組合</th><th>機率</th><th>莊家優勢</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- 教學 -->
+        <div class="tabpanel prose" role="tabpanel" id="p-learn" aria-labelledby="tab-learn" hidden>
+          <button class="btn primary tour-cta" id="btnTour2" type="button">開始互動教學（約 40 秒）</button>
+
+          <h3>三十秒看懂骰寶</h3>
+          <p>骰寶（Sic Bo，港澳叫「大細」）只有一個動作：荷官把<b>三顆骰子</b>搖出來。你在搖之前決定要押哪些格子，開出的三個點數決定哪些格子中獎，沒中的本金全部收走。</p>
+          <p>沒有牌可以算、沒有對手、每一局完全獨立。一局的流程就是：</p>
+          <ol class="steps">
+            <li><b>選籌碼</b>面額</li>
+            <li><b>點注區</b>下注，可以同時押很多區</li>
+            <li><b>開骰</b></li>
+            <li>中獎的區按賠率派彩，其餘輸掉本金</li>
+          </ol>
+
+          <h3>注區逐一看</h3>
+          <p class="note">下面的數字全部由 216 種等機率結果算出，跟檯面上印的一致。</p>
+          <div id="learnBets" class="learn-bets"></div>
+
+          <h3>一定要記住：圍骰通殺</h3>
+          <p>三顆同點（1-1-1 到 6-6-6）叫<b>圍骰</b>。開出圍骰時，<b>大、小、單、雙全部輸</b>，不管總點是多少。</p>
+          <p>這條規則就是莊家在大小上賺 2.78% 的來源——把它拿掉，大小就是完全公平的賭局了。</p>
+
+          <h3>賠率怎麼讀</h3>
+          <p>檯面寫「<b>6 : 1</b>」的意思是：押 100 中了，拿回 <b>100 本金 + 600 彩金 = 700</b>。這個網站顯示的派彩都照這個規則。</p>
+          <p><b>單骰</b>比較特別：你買的點數出現 1／2／3 顆，分別賠 1／2／3 倍。三顆全中就是押 100 拿回 400。</p>
+
+          <h3>期望值：這張桌子最有用的東西</h3>
+          <p>「莊家優勢」＝ 你長期平均每押 100 元會賠掉多少。骰寶各注區差距非常大：</p>
+          <ul>
+            <li><b>2.78%</b>　大／小／單／雙、二骰組合　←　全場最好</li>
+            <li><b>7.87%</b>　單骰</li>
+            <li><b>9.72%</b>　點數 7 或 14</li>
+            <li><b>16.20%</b>　圍骰（指定三同點）</li>
+            <li><b>18.52%</b>　長骰（指定對子）</li>
+            <li><b>18.98%</b>　點數 9 或 12　←　全場最差</li>
+          </ul>
+          <p>差距有多大？每局押 100、連押 1,000 局：押大平均賠掉 <b>2,780</b>，押點數 9 平均賠掉 <b>18,980</b>。同一張桌子、同樣的時間，<b>差快七倍</b>。</p>
+          <p>所以下注時盯著「本局期望值」那格看——它就是在告訴你這組注碼的長期成本。</p>
+
+          <h3>三個常見迷思</h3>
+          <p><b>「連開五把小，該開大了。」</b><br>骰子沒有記憶。每一局開大的機率都是 48.61%，跟前面開什麼完全無關。珠盤路好看，但沒有預測力。</p>
+          <p><b>「輸了就加倍，總會贏回來。」</b><br>限紅和你的本金都是有限的：連輸八把就要押 256 倍。這個策略只是把「常常小贏」換成「偶爾大破產」，長期期望值一分錢都沒改善。
+          <br>別聽我說，去<b>「實驗室」分頁</b>把四種投注系統各跑幾千場：你會看到它們的「損益 ÷ 總投注」全部黏在同一個數字上，只有破產率天差地遠。</p>
+          <p><b>「押滿所有注區就穩賺。」</b><br>每一個注區的期望值都是負的，加起來只會更負。押越多區只是讓輸得更平穩而已。</p>
+
+          <h3>建議這樣練</h3>
+          <ol class="steps">
+            <li>先<b>只押大小</b>跑 30 局，看「實際返還率」慢慢往 97.22% 靠。</li>
+            <li>換成<b>只押點數 9 或 12</b> 跑 30 局，感受同樣的錢消失得多快。</li>
+            <li>用<b>快速模擬 1,000 局</b>對照兩者——短期運氣的雜訊在一千局後就蓋不過莊家優勢了。</li>
+            <li>最後翻「賠率」分頁，把所有注區的莊家優勢從低到高看一次。</li>
+          </ol>
+
+          <h3>換成你要去的那張桌</h3>
+          <p>「賠率」分頁可以切換賠率表，也能<b>自訂</b>——照你面前檯面印的數字填進去，所有機率、莊家優勢、檯面印刷和期望值都會即時重算。</p>
+          <p>差別有多大？二骰組合賠 6:1 時莊家優勢是 2.78%（全場最好的注之一），賠 <b>5:1 就變成 16.67%</b>。同一個格子、同一個玩法，只差檯面上印的一個數字。所以進賭場前一定要看檯面。</p>
+
+          <h3>操作</h3>
+          <ul>
+            <li><b>手機</b>：點注區下注、<b>長按注區</b>退回一注；下方工具列固定放籌碼和「開骰」；點注區分類標題可以收合，讓桌面短一點。</li>
+            <li><b>電腦</b>：點注區下注、<b>右鍵</b>退回一注。</li>
+            <li><b>快捷鍵</b>：<code>空白鍵</code> 開骰 · <code>R</code> 重複下注 · <code>Z</code> 撤銷 · <code>C</code> 清除 · <code>1</code>–<code>5</code> 切換籌碼</li>
+          </ul>
+
+          <h3>裝到手機主畫面</h3>
+          <p>這是一個 PWA，裝起來會像 App 一樣全螢幕開啟，<b>離線也能玩</b>。</p>
+          <ul>
+            <li><b>iPhone / iPad（Safari）</b>：分享按鈕 → 加入主畫面。</li>
+            <li><b>Android（Chrome）</b>：右上角選單 → 安裝應用程式；或直接按標題列的「安裝到主畫面」。</li>
+          </ul>
+
+          <h3>亂數</h3>
+          <p>骰子點數以瀏覽器的 <code>crypto.getRandomValues</code> 產生，並用拒絕採樣去掉取模偏差，六面完全等機率。這裡只有練習籌碼，沒有真錢。</p>
+        </div>
+      </section>
+    </aside>
+  </div>
+
+  <p class="foot">
+    練習用途，非賭博平台，籌碼無任何價值。<b>骰寶的每一個注區長期期望值都是負的</b>——這個桌子是拿來理解賠率的，不是拿來找必勝法的。
+  </p>
+</div>
+
+<!-- 手機：開骰後把結果推到眼前（此時檯面通常已捲到下方） -->
+<div class="sheet" id="sheet" hidden>
+  <div class="sheet-dice" id="sheetDice"></div>
+  <div class="sheet-main">
+    <span class="sheet-total num" id="sheetTotal">0</span>
+    <span class="sheet-verdict" id="sheetVerdict"></span>
+  </div>
+  <div class="sheet-net num" id="sheetNet">0</div>
+  <div class="sheet-hint">點一下關閉</div>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="./bets.js"></script>
+<script src="./app.js"></script>
+</body>
+</html>
