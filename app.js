@@ -44,6 +44,7 @@
     pt: 'standard',           // 使用中的賠率表
     ptCustom: null,
     quiz: null,               // 快問快答的成績紀錄
+    tips: true,               // 新手提示
     stats: { rounds: 0, wagered: 0, returned: 0, evSum: 0, dist: {}, groups: {}, rS: 0, rS2: 0 }
   };
   var rolling = false;
@@ -54,7 +55,7 @@
         balance: state.balance, chip: state.chip, last: state.last,
         road: state.road.slice(-60), sound: state.sound, stats: state.stats,
         open: state.open, tourDone: state.tourDone,
-        pt: state.pt, ptCustom: state.ptCustom, quiz: state.quiz
+        pt: state.pt, ptCustom: state.ptCustom, quiz: state.quiz, tips: state.tips
       }));
     } catch (e) { /* 私密瀏覽或封鎖儲存時忽略 */ }
   }
@@ -67,6 +68,7 @@
       state.open = o.open || null; state.tourDone = !!o.tourDone;
       state.pt = o.pt || 'standard'; state.ptCustom = o.ptCustom || null;
       state.quiz = o.quiz || null;
+      state.tips = o.tips !== false;        // 舊存檔沒有這個欄位時預設開啟
       if (o.stats) state.stats = o.stats;
       if (!state.stats.dist) state.stats.dist = {};
       if (!state.stats.groups) state.stats.groups = {};
@@ -314,6 +316,7 @@
     state.balance -= amt;
     state.stack.push({ id: id, amt: amt });
     tick(); buzz(10); renderTable(); renderMeters(); save();
+    maybeTip(id);
   }
   function takeBack(id) {
     if (rolling || !state.bets[id]) return;
@@ -975,6 +978,82 @@
   }
 
 
+
+  /* 注區的完整顯示名稱：檯面上「9」就夠了，但講到期望值時要說「點數 9」。 */
+  function betName(bet) {
+    if (bet.group === 'total') return '點數 ' + bet.label;
+    if (bet.group === 'double') return '長骰 ' + bet.label.slice(2);
+    if (bet.group === 'triple' && bet.id !== 'anytriple') return '圍骰 ' + bet.label.slice(2);
+    return bet.label;
+  }
+
+  /* --------- 一晚要花多少 --------- */
+  function buildCostBet() {
+    $('costBet').innerHTML = S.KINDS.map(function (k) {
+      return '<option value="' + k.id + '">' + k.short + '</option>';
+    }).join('');
+    $('costBet').value = 'big';
+  }
+
+  function runCost() {
+    var betId = $('costBet').value;
+    var stake = clampNum($('costStake'), 1, 100000, 100);
+    var rate = clampNum($('costRate'), 5, 200, 40);
+    var hours = clampNum($('costHours'), 1, 24, 4);
+    var bank = clampNum($('costBank'), 10, 10000000, 10000);
+    var rounds = rate * hours;
+    var seed = 0;
+    try { seed = crypto.getRandomValues(new Uint32Array(1))[0]; } catch (e) { seed = Date.now(); }
+
+    var o = S.outlook({ betId: betId, stake: stake, rounds: rounds, bankroll: bank, sessions: 4000, seed: seed });
+    var bet = BY_ID[betId];
+    var cost = -o.mean, perHour = cost / hours;
+
+    var rows =
+      row('總投注額', money(o.wagered), '') +
+      row('九成的情況落在', signed(o.p05) + ' ～ ' + signed(o.p95), '') +
+      row('中位數（最典型的結果）', signed(o.p50), netClass(o.p50)) +
+      row('收在正的機率', pct(o.aheadRate, 1), '') +
+      row('帶的錢撐不完 ' + hours + ' 小時的機率', pct(o.bustRate, 1), o.bustRate > 0.15 ? 'neg' : '');
+
+    var note = '把它當<b>門票錢</b>：' + money(cost) + ' 買 ' + hours + ' 小時，等於每小時約 ' +
+      money(perHour) + '。玩完就走，那一晚就是划算的。';
+
+    if (bet.he > BY_ID.big.he + 1e-9) {
+      var better = S.outlook({ betId: 'big', stake: stake, rounds: rounds, bankroll: bank, sessions: 1000, seed: seed });
+      note += '<br><br>同樣的時間與注碼，改押<b>「大」或「小」</b>，期望成本會從 ' + money(cost) +
+        ' 降到 <b>' + money(-better.mean) + '</b>——什麼都不用改，只是換一格押。';
+    }
+    if (o.bustRate > 0.2) {
+      note += '<br><br>另外：你帶的 ' + money(bank) + ' 有 <b>' + pct(o.bustRate, 0) +
+        '</b> 的機率撐不完，會提早結束。想玩滿就得多帶，或把每注調小。';
+    }
+
+    $('costOut').innerHTML =
+      '<div class="cost-hero"><div class="k">這一晚的期望成本</div>' +
+      '<div class="v">−' + money(cost) + '</div>' +
+      '<div class="s">押「' + betName(bet) + '」，' + hours + ' 小時 × 每小時 ' + rate + ' 局 ＝ <b>' +
+      money(rounds) + ' 局</b>，每注 ' + money(stake) + '</div></div>' +
+      '<div class="cost-rows">' + rows + '</div>' +
+      '<div class="cost-note">' + note + '</div>';
+
+    function row(k, v, cls) {
+      return '<div class="cost-row"><span class="k">' + k + '</span><span class="v ' + (cls || '') + '">' + v + '</span></div>';
+    }
+  }
+
+  /* --------- 新手提示 --------- */
+  var tipShown = {};
+  function maybeTip(id) {
+    if (!state.tips) return;
+    var bet = BY_ID[id];
+    if (bet.he <= 0.05) return;                       // 大小單雙、二骰組合就別囉嗦了
+    var key = bet.group + ':' + bet.he.toFixed(4);
+    if (tipShown[key]) return;                        // 同一種注區一輪提醒一次就好
+    tipShown[key] = 1;
+    toast(betName(bet) + '：莊家優勢 ' + pct(bet.he) + '，同桌的大／小只有 ' + pct(BY_ID.big.he) + '。');
+  }
+
   /* --------- 賠率快問快答 --------- */
   var QZ_LEN = 10;
   var quiz = null, quizDom = null;
@@ -1364,6 +1443,7 @@
     buildLearn();
     buildTour();
     buildQuizDom();
+    buildCostBet();
 
     var restored = load();
 
@@ -1383,6 +1463,8 @@
 
     setChip(state.chip);
     $('railLimit').textContent = '1 – ' + money(SPOT_MAX);
+    $('btnTips').setAttribute('aria-pressed', String(state.tips));
+    $('btnTips').textContent = '提示：' + (state.tips ? '開' : '關');
     $('btnSound').setAttribute('aria-pressed', String(state.sound));
     $('btnSound').textContent = '音效：' + (state.sound ? '開' : '關');
 
@@ -1407,6 +1489,15 @@
     $('btnTour2').addEventListener('click', startTour);
     $('btnQuiz').addEventListener('click', startQuiz);
     $('btnQuiz2').addEventListener('click', startQuiz);
+    $('btnCost').addEventListener('click', runCost);
+    $('btnTips').addEventListener('click', function () {
+      state.tips = !state.tips;
+      this.setAttribute('aria-pressed', String(state.tips));
+      this.textContent = '提示：' + (state.tips ? '開' : '關');
+      tipShown = {};
+      save();
+      toast(state.tips ? '新手提示已開啟：押到高莊家優勢的注區時會提醒你。' : '新手提示已關閉。');
+    });
     $('sheet').addEventListener('click', hideSheet);
     $('btnSound').addEventListener('click', function () {
       state.sound = !state.sound;

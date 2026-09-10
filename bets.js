@@ -177,10 +177,61 @@
         bet.oddsText = bet.payout + ' : 1';
       }
       bet.he = -bet.ev;
+
+      // 標準差：同樣走完 216 種結果算，用來估「一晚可能的輸贏範圍」。
+      // 大小這種一賠一的注 sd≈1，圍骰那種一賠 180 的 sd 超過 12——
+      // 期望值一樣的兩注，體感可以差非常多。
+      var sq = 0;
+      for (var a2 = 1; a2 <= 6; a2++) for (var b2 = 1; b2 <= 6; b2++) for (var c2 = 1; c2 <= 6; c2++) {
+        var net = netOf(bet, [a2, b2, c2]);
+        sq += net * net;
+      }
+      bet.sd = Math.sqrt(Math.max(0, sq / 216 - bet.ev * bet.ev));
     }
     return pt;
   }
   function currentPaytable() { return current; }
+
+  /* 一晚的展望。
+     期望值算得出來，但「可能輸贏多少」高賠率注區的分佈歪得厲害，
+     常態近似會騙人，所以區間與破產率都用蒙地卡羅直接跑。 */
+  function outlook(o) {
+    var bet = BY_ID[o.betId];
+    var rounds = Math.max(1, Math.round(o.rounds));
+    var stake = Math.max(1, o.stake);
+    var bankroll = Math.max(stake, o.bankroll || stake * rounds);
+    var sessions = o.sessions || 4000;
+    var roll = makeDiceRoller(makeRng(o.seed || 0x5C1B0));
+
+    var wagered = rounds * stake;
+    var mean = wagered * bet.ev;                     // 理論期望損益（負值）
+
+    var nets = [], bust = 0, ahead = 0;
+    for (var s = 0; s < sessions; s++) {
+      var bank = bankroll, played = 0;
+      for (var r = 0; r < rounds; r++) {
+        if (bank < stake) { bust++; break; }
+        bank += netOf(bet, roll()) * stake;
+        played++;
+      }
+      var net = bank - bankroll;
+      nets.push(net);
+      if (net > 0) ahead++;
+    }
+    nets.sort(function (x, y) { return x - y; });
+    function q(p) { return nets[Math.min(nets.length - 1, Math.floor(p * nets.length))]; }
+
+    return {
+      bet: bet, rounds: rounds, stake: stake, bankroll: bankroll,
+      wagered: wagered,
+      mean: mean,                                    // 期望損益
+      perRound: bet.ev * stake,
+      sd: stake * Math.sqrt(rounds) * bet.sd,
+      p05: q(0.05), p50: q(0.5), p95: q(0.95),
+      bustRate: bust / sessions,
+      aheadRate: ahead / sessions
+    };
+  }
 
   applyPaytable(clonePaytable(STANDARD));
 
@@ -188,6 +239,7 @@
     WAYS: WAYS, BETS: BETS, BY_ID: BY_ID, GROUP_LABEL: GROUP_LABEL, KINDS: KINDS,
     PAYTABLES: PAYTABLES, STANDARD: STANDARD, TIGHT: TIGHT,
     clonePaytable: clonePaytable, applyPaytable: applyPaytable, currentPaytable: currentPaytable,
+    outlook: outlook,
     netOf: netOf, payoutFor: payoutFor,
     rollDice: rollDice, makeRng: makeRng, makeDiceRoller: makeDiceRoller,
     counts: counts, isTriple: isTriple, sum: sum
