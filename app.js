@@ -43,6 +43,7 @@
     tourDone: false,
     pt: 'standard',           // 使用中的賠率表
     ptCustom: null,
+    quiz: null,               // 快問快答的成績紀錄
     stats: { rounds: 0, wagered: 0, returned: 0, evSum: 0, dist: {}, groups: {}, rS: 0, rS2: 0 }
   };
   var rolling = false;
@@ -53,7 +54,7 @@
         balance: state.balance, chip: state.chip, last: state.last,
         road: state.road.slice(-60), sound: state.sound, stats: state.stats,
         open: state.open, tourDone: state.tourDone,
-        pt: state.pt, ptCustom: state.ptCustom
+        pt: state.pt, ptCustom: state.ptCustom, quiz: state.quiz
       }));
     } catch (e) { /* 私密瀏覽或封鎖儲存時忽略 */ }
   }
@@ -65,6 +66,7 @@
       state.road = o.road || []; state.sound = !!o.sound;
       state.open = o.open || null; state.tourDone = !!o.tourDone;
       state.pt = o.pt || 'standard'; state.ptCustom = o.ptCustom || null;
+      state.quiz = o.quiz || null;
       if (o.stats) state.stats = o.stats;
       if (!state.stats.dist) state.stats.dist = {};
       if (!state.stats.groups) state.stats.groups = {};
@@ -634,20 +636,12 @@
 
   /* --------- 賠率表 --------- */
   function buildOddsTable() {
-    var pick = ['big', 'small', 'odd', 'even', 'combo12', 'single1', 'total7', 'total8', 'total10',
-      'total9', 'total6', 'total5', 'total4', 'anytriple', 'double1', 'triple1'];
-    var NAME = {
-      big: '大（11–17）', small: '小（4–10）', odd: '單', even: '雙', combo12: '二骰組合（任一組）',
-      single1: '單骰（任一點）', total7: '點數 7 或 14', total8: '點數 8 或 13', total10: '點數 10 或 11',
-      total9: '點數 9 或 12', total6: '點數 6 或 15', total5: '點數 5 或 16', total4: '點數 4 或 17',
-      anytriple: '全圍（任意三同點）', double1: '長骰（指定對子）', triple1: '圍骰（指定三同點）'
-    };
-    var rows = pick.map(function (id) { return BY_ID[id]; });
-    rows.sort(function (x, y) { return x.he - y.he; });
+    var rows = S.KINDS.slice().sort(function (x, y) { return BY_ID[x.id].he - BY_ID[y.id].he; });
     var maxHe = 0.19;
-    $('oddsTable').querySelector('tbody').innerHTML = rows.map(function (bt) {
+    $('oddsTable').querySelector('tbody').innerHTML = rows.map(function (kind) {
+      var bt = BY_ID[kind.id];
       var cls = bt.he < 0.05 ? ' good' : bt.he > 0.15 ? ' bad' : '';
-      return '<tr><td style="text-align:left">' + NAME[bt.id] + '</td>' +
+      return '<tr><td style="text-align:left">' + kind.name + '</td>' +
         '<td>' + bt.oddsText.replace(' : 1', '') + '</td>' +
         '<td>' + bt.ways + '</td>' +
         '<td>' + pct(bt.ways / 216, 1) + '</td>' +
@@ -980,6 +974,140 @@
     } catch (e) { /* 不支援就算了 */ }
   }
 
+
+  /* --------- 賠率快問快答 --------- */
+  var QZ_LEN = 10;
+  var quiz = null, quizDom = null;
+
+  function buildQuizDom() {
+    var el = document.createElement('div');
+    el.className = 'quiz'; el.id = 'quiz'; el.hidden = true;
+    el.innerHTML = '<div class="quiz-card" id="quizCard" role="dialog" aria-modal="true" aria-label="賠率快問快答"></div>';
+    document.body.appendChild(el);
+    quizDom = el;
+    el.addEventListener('click', function (e) {
+      var a = e.target.closest && e.target.closest('[data-qz]');
+      if (!a) return;
+      var act = a.getAttribute('data-qz');
+      if (act === 'close') closeQuiz();
+      else if (act === 'next') stepQuiz();
+      else if (act === 'again') startQuiz();
+      else answerQuiz(Number(act));
+    });
+  }
+
+  function startQuiz() {
+    if (typeof SicBoQuiz === 'undefined') { toast('快問快答載入失敗。'); return; }
+    hideSheet();
+    quiz = {
+      qs: SicBoQuiz.make().round(QZ_LEN),
+      i: 0, answered: null, score: 0, marks: [],
+      per: { better: { ok: 0, n: 0 }, payout: { ok: 0, n: 0 }, hit: { ok: 0, n: 0 } }
+    };
+    quizDom.hidden = false;
+    renderQuiz();
+  }
+  function closeQuiz() { quizDom.hidden = true; quiz = null; }
+  function stepQuiz() { if (!quiz) return; quiz.i++; quiz.answered = null; renderQuiz(); }
+
+  function answerQuiz(idx) {
+    if (!quiz || quiz.answered !== null || !quiz.qs[quiz.i]) return;
+    var q = quiz.qs[quiz.i], ok = !!q.options[idx].correct;
+    quiz.answered = idx;
+    quiz.marks[quiz.i] = ok;
+    quiz.per[q.type].n++;
+    if (ok) { quiz.score++; quiz.per[q.type].ok++; }
+    tick(); buzz(ok ? 12 : [10, 40, 10]);
+    renderQuiz();
+    if (quiz.i === QZ_LEN - 1) finishQuiz();
+  }
+
+  function finishQuiz() {
+    var s = state.quiz || (state.quiz = { best: 0, rounds: 0, ok: 0, n: 0 });
+    s.rounds++; s.ok += quiz.score; s.n += QZ_LEN;
+    if (quiz.score > s.best) s.best = quiz.score;
+    save();
+  }
+
+  var QZ_TYPE_NAME = { better: '挑注區', payout: '記賠率', hit: '判輸贏' };
+
+  function renderQuiz() {
+    if (!quiz) return;
+    var card = $('quizCard');
+    var best = (state.quiz && state.quiz.best) || 0;
+
+    if (quiz.i >= QZ_LEN) { card.innerHTML = quizEndHTML(best); return; }
+
+    var q = quiz.qs[quiz.i], done = quiz.answered !== null;
+    var head = '<div class="quiz-head"><h3>賠率快問快答</h3>' +
+      '<span class="n">第 ' + (quiz.i + 1) + ' / ' + QZ_LEN + ' 題' +
+      (best ? '　最佳 ' + best + '/' + QZ_LEN : '') + '</span>' +
+      '<button class="quiz-x" type="button" data-qz="close" aria-label="關閉">×</button></div>';
+
+    var dots = '<div class="quiz-dots">' + quiz.qs.map(function (_, k) {
+      var cls = k < quiz.i || (k === quiz.i && done) ? (quiz.marks[k] ? 'ok' : 'no') : (k === quiz.i ? 'now' : '');
+      return '<i class="' + cls + '"></i>';
+    }).join('') + '</div>';
+
+    var art = q.dice
+      ? '<div class="quiz-dice">' + q.dice.map(function (v) { return mini(v, 'lg'); }).join('') +
+        '<span class="tot">共 ' + q.total + ' 點</span></div>'
+      : '';
+
+    var opts = '<div class="quiz-opts">' + q.options.map(function (o, k) {
+      var cls = '', mark = '';
+      if (done) {
+        if (o.correct) { cls = ' right'; mark = '✔'; }
+        else if (k === quiz.answered) { cls = ' wrong'; mark = '✕'; }
+        else cls = ' faded';
+      }
+      return '<button class="quiz-opt' + cls + '" type="button" data-qz="' + k + '"' + (done ? ' disabled' : '') + '>' +
+        '<span class="t">' + o.label + '</span>' +
+        (o.sub ? '<span class="s">' + o.sub + '</span>' : '') +
+        '<span class="mark">' + mark + '</span></button>';
+    }).join('') + '</div>';
+
+    var fb = '';
+    if (done) {
+      var right = quiz.marks[quiz.i];
+      fb = '<div class="quiz-fb ' + (right ? 'ok' : 'no') + '"><span class="v">' +
+        (right ? '答對了' : '答錯了') + '</span>' + q.explain + '</div>' +
+        '<button class="btn primary quiz-next" type="button" data-qz="next">' +
+        (quiz.i === QZ_LEN - 1 ? '看結果' : '下一題') + '</button>';
+    }
+
+    card.innerHTML = head + dots + art +
+      '<p class="quiz-q">' + q.prompt + '</p>' +
+      (q.hint ? '<p class="quiz-hint">' + q.hint + '</p>' : '') + opts + fb;
+  }
+
+  function quizEndHTML(best) {
+    var s = quiz.score;
+    var verdict = s === QZ_LEN ? '滿分。你比檯面上多數人清楚自己在押什麼。'
+      : s >= 8 ? '很穩。錯的那幾題翻一下「賠率」分頁就補起來了。'
+      : s >= 5 ? '一半左右——莊家優勢的排序值得再看一次。'
+      : '先去「賠率」分頁把注區依莊家優勢從低到高看一遍，再回來考。';
+
+    var rows = Object.keys(QZ_TYPE_NAME).map(function (t) {
+      var p = quiz.per[t];
+      return '<div class="r"><span>' + QZ_TYPE_NAME[t] + '</span><b>' + p.ok + ' / ' + p.n + '</b></div>';
+    }).join('');
+
+    var all = state.quiz || { rounds: 0, ok: 0, n: 0 };
+    return '<div class="quiz-head"><h3>賠率快問快答</h3><span class="n">第 ' + all.rounds + ' 輪</span>' +
+      '<button class="quiz-x" type="button" data-qz="close" aria-label="關閉">×</button></div>' +
+      '<div class="quiz-end">' +
+      '<div class="quiz-score">' + s + '<small> / ' + QZ_LEN + '</small></div>' +
+      '<p class="quiz-verdict">' + verdict + '</p>' +
+      '<div class="quiz-break">' + rows +
+      '<div class="r" style="border-top:1px solid var(--seam-soft);padding-top:6px">' +
+      '<span>最佳紀錄</span><b>' + best + ' / ' + QZ_LEN + '</b></div>' +
+      '<div class="r"><span>累計答對率</span><b>' + (all.n ? pct(all.ok / all.n, 0) : '—') + '</b></div>' +
+      '</div>' +
+      '<div class="quiz-again"><button class="btn" type="button" data-qz="close">關閉</button>' +
+      '<button class="btn primary" type="button" data-qz="again">再來一輪</button></div></div>';
+  }
+
   /* --------- 教學導覽 --------- */
   var TOUR = [
     { title: '這是骰寶練習桌',
@@ -1235,6 +1363,7 @@
 
     buildLearn();
     buildTour();
+    buildQuizDom();
 
     var restored = load();
 
@@ -1276,6 +1405,8 @@
     $('btnReset').addEventListener('click', resetAll);
     $('btnTour').addEventListener('click', startTour);
     $('btnTour2').addEventListener('click', startTour);
+    $('btnQuiz').addEventListener('click', startQuiz);
+    $('btnQuiz2').addEventListener('click', startQuiz);
     $('sheet').addEventListener('click', hideSheet);
     $('btnSound').addEventListener('click', function () {
       state.sound = !state.sound;
@@ -1290,6 +1421,16 @@
       var tag = (e.target && e.target.tagName) || '';
       if (tag === 'INPUT' || tag === 'TEXTAREA') return;
       var k = e.key.toLowerCase();
+      if (quiz && !quizDom.hidden) {
+        if (e.key === 'Escape') closeQuiz();
+        else if (e.key === 'Enter' || e.code === 'Space') {
+          e.preventDefault();
+          if (quiz.answered !== null || quiz.i >= QZ_LEN) stepQuiz();
+        } else if (k >= '1' && k <= '4' && quiz.answered === null && quiz.qs[quiz.i]) {
+          answerQuiz(Number(k) - 1);
+        }
+        return;
+      }
       if (!tourDom.hidden) {
         if (e.key === 'Escape') endTour();
         else if (e.key === 'Enter') nextStep();
