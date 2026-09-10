@@ -190,6 +190,7 @@
             <button class="pt" type="button" data-pt="custom" aria-pressed="false">自訂</button>
           </div>
           <p class="pt-note" id="ptNote"></p>
+          <button class="btn sm gold-line" id="btnQuiz2" type="button" style="width:100%;margin-bottom:10px">用這張賠率表考我 10 題</button>
           <div class="pt-editor" id="ptEditor" hidden></div>
           <p class="empty" style="padding:0 0 10px">共 216 種等機率結果（6³）。莊家優勢越低，長期越不吃虧。</p>
           <div class="scroll">
@@ -203,6 +204,7 @@
         <!-- 教學 -->
         <div class="tabpanel prose" role="tabpanel" id="p-learn" aria-labelledby="tab-learn" hidden>
           <button class="btn primary tour-cta" id="btnTour2" type="button">開始互動教學（約 40 秒）</button>
+          <button class="btn tour-cta gold-line" id="btnQuiz" type="button">賠率快問快答（10 題）</button>
 
           <h3>三十秒看懂骰寶</h3>
           <p>骰寶（Sic Bo，港澳叫「大細」）只有一個動作：荷官把<b>三顆骰子</b>搖出來。你在搖之前決定要押哪些格子，開出的三個點數決定哪些格子中獎，沒中的本金全部收走。</p>
@@ -253,6 +255,10 @@
             <li>最後翻「賠率」分頁，把所有注區的莊家優勢從低到高看一次。</li>
           </ol>
 
+          <h3>把賠率練成直覺</h3>
+          <p>「賠率快問快答」一輪十題，考三件事：<b>兩個注區哪個划算</b>、<b>這注賠多少</b>、<b>開出這三顆算不算中</b>。
+          題目是依「目前生效的賠率表」即時產生的——你把賠率改成自己那張桌，練的就是那張桌。</p>
+
           <h3>換成你要去的那張桌</h3>
           <p>「賠率」分頁可以切換賠率表，也能<b>自訂</b>——照你面前檯面印的數字填進去，所有機率、莊家優勢、檯面印刷和期望值都會即時重算。</p>
           <p>差別有多大？二骰組合賠 6:1 時莊家優勢是 2.78%（全場最好的注之一），賠 <b>5:1 就變成 16.67%</b>。同一個格子、同一個玩法，只差檯面上印的一個數字。所以進賭場前一定要看檯面。</p>
@@ -296,6 +302,7 @@
 
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="./bets.js"></script>
+<script src="./quiz.js"></script>
 <script src="./app.js"></script>
 </body>
 </html>

@@ -127,6 +127,27 @@
       win: function (d) { return counts(d)[v]; } });
   })(n);
 
+  /* 注區「種類」：每一種挑一個代表注區，供賠率表與快問快答共用。
+     同一種類裡的每一格機率與賠率都一樣（例如 15 組二骰組合），列一次就夠。 */
+  var KINDS = [
+    { id: 'big', name: '大（11–17）', short: '大' },
+    { id: 'small', name: '小（4–10）', short: '小' },
+    { id: 'odd', name: '單', short: '單' },
+    { id: 'even', name: '雙', short: '雙' },
+    { id: 'combo12', name: '二骰組合（任一組）', short: '二骰組合' },
+    { id: 'single1', name: '單骰（任一點）', short: '單骰' },
+    { id: 'total7', name: '點數 7 或 14', short: '點數 7' },
+    { id: 'total8', name: '點數 8 或 13', short: '點數 8' },
+    { id: 'total10', name: '點數 10 或 11', short: '點數 10' },
+    { id: 'total9', name: '點數 9 或 12', short: '點數 9' },
+    { id: 'total6', name: '點數 6 或 15', short: '點數 6' },
+    { id: 'total5', name: '點數 5 或 16', short: '點數 5' },
+    { id: 'total4', name: '點數 4 或 17', short: '點數 4' },
+    { id: 'anytriple', name: '全圍（任意三同點）', short: '全圍' },
+    { id: 'double1', name: '長骰（指定對子）', short: '長骰' },
+    { id: 'triple1', name: '圍骰（指定三同點）', short: '圍骰' }
+  ];
+
   /* 中獎時每一元本金的淨賺；沒中就是 −1（本金輸掉）。 */
   function netOf(bet, dice) {
     var w = bet.win(dice);
@@ -164,7 +185,7 @@
   applyPaytable(clonePaytable(STANDARD));
 
   return {
-    WAYS: WAYS, BETS: BETS, BY_ID: BY_ID, GROUP_LABEL: GROUP_LABEL,
+    WAYS: WAYS, BETS: BETS, BY_ID: BY_ID, GROUP_LABEL: GROUP_LABEL, KINDS: KINDS,
     PAYTABLES: PAYTABLES, STANDARD: STANDARD, TIGHT: TIGHT,
     clonePaytable: clonePaytable, applyPaytable: applyPaytable, currentPaytable: currentPaytable,
     netOf: netOf, payoutFor: payoutFor,
