@@ -1,6 +1,6 @@
 /* 骰寶練習桌 — service worker
    改版時把 VERSION 加一，舊快取會在啟用時清掉。 */
-var VERSION = 'v5';
+var VERSION = 'v6';
 var SHELL = 'sicbo-shell-' + VERSION;
 var RUNTIME = 'sicbo-runtime-' + VERSION;
 

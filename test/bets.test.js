@@ -135,3 +135,44 @@ test('長期實測返還率會收斂到理論值', () => {
     assert.ok(Math.abs(actual - bet.ev) < 0.01, `${id}: 實測 ${actual.toFixed(4)} vs 理論 ${bet.ev.toFixed(4)}`);
   }
 });
+
+test('每個注區的標準差與窮舉結果一致', () => {
+  S.applyPaytable(S.clonePaytable(S.STANDARD));
+  for (const bet of S.BETS) {
+    let sq = 0;
+    for (const d of ALL) { const n = S.netOf(bet, d); sq += n * n; }
+    const sd = Math.sqrt(sq / 216 - bet.ev ** 2);
+    assert.ok(Math.abs(sd - bet.sd) < 1e-12, `${bet.id}: sd ${bet.sd} vs 窮舉 ${sd}`);
+  }
+  // 一賠一的注每局非贏即輸一個單位，標準差必然貼近 1
+  assert.ok(Math.abs(S.BY_ID.big.sd - 1) < 0.001);
+  // 圍骰極端偏態，波動遠大於大小
+  assert.ok(S.BY_ID.triple1.sd > 12);
+});
+
+test('一晚的展望：期望值精確，區間與破產率合理', () => {
+  const o = S.outlook({ betId: 'big', stake: 100, rounds: 160, bankroll: 3000, sessions: 2000 });
+  assert.strictEqual(o.wagered, 16000);
+  assert.ok(Math.abs(o.mean - 16000 * S.BY_ID.big.ev) < 1e-9, '期望損益應該是投注額乘上期望值');
+  assert.ok(o.p05 <= o.p50 && o.p50 <= o.p95, '分位數順序不對');
+  assert.ok(o.bustRate >= 0 && o.bustRate <= 1);
+  assert.ok(o.aheadRate > 0.2 && o.aheadRate < 0.5, `收在正的比例 ${o.aheadRate} 不合理`);
+  assert.ok(o.p05 < 0 && o.p95 > 0, '九成區間應該橫跨零');
+});
+
+test('一晚的展望：本金夠大就不會破產，同種子可重現', () => {
+  const big = S.outlook({ betId: 'big', stake: 10, rounds: 100, bankroll: 1e7, sessions: 500 });
+  assert.strictEqual(big.bustRate, 0, '本金遠大於可能虧損時不該破產');
+
+  const a = S.outlook({ betId: 'total9', stake: 50, rounds: 80, bankroll: 1000, sessions: 500, seed: 42 });
+  const b = S.outlook({ betId: 'total9', stake: 50, rounds: 80, bankroll: 1000, sessions: 500, seed: 42 });
+  assert.deepStrictEqual([a.p05, a.p50, a.p95, a.bustRate], [b.p05, b.p50, b.p95, b.bustRate]);
+});
+
+test('一晚的展望：注區越差，期望成本越高', () => {
+  const args = { stake: 100, rounds: 160, bankroll: 100000, sessions: 500 };
+  const good = S.outlook(Object.assign({ betId: 'big' }, args));
+  const bad = S.outlook(Object.assign({ betId: 'total9' }, args));
+  assert.ok(bad.mean < good.mean, '點數 9 的期望損失應該比大更慘');
+  assert.ok(Math.abs(bad.mean / good.mean - S.BY_ID.total9.he / S.BY_ID.big.he) < 1e-9);
+});

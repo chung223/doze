@@ -658,6 +658,57 @@ input[type="number"]:focus,select:focus{border-color:var(--gold);outline:none}
 .quiz-again{display:flex;gap:8px}
 .quiz-again .btn{flex:1 1 0}
 
+/* ---------- 可收合的教學段落 --------------------------------------------- */
+.prose details{
+  margin-bottom:8px;border:1px solid var(--seam-soft);border-radius:var(--r-md);
+  background:rgba(0,0,0,.2);overflow:hidden;
+}
+.prose details[open]{background:rgba(0,0,0,.28)}
+.prose summary{
+  padding:11px 13px;cursor:pointer;list-style:none;
+  font-family:var(--ff-display);font-size:14px;font-weight:700;color:var(--gold);
+  letter-spacing:.04em;touch-action:manipulation;position:relative;padding-right:34px;
+}
+.prose summary::-webkit-details-marker{display:none}
+.prose summary::after{
+  content:"";position:absolute;right:14px;top:50%;width:7px;height:7px;
+  border-right:2px solid var(--gold-dim);border-bottom:2px solid var(--gold-dim);
+  transform:translateY(-70%) rotate(45deg);transition:transform 160ms ease;
+}
+.prose details[open] summary::after{transform:translateY(-30%) rotate(-135deg)}
+.prose summary:hover{background:rgba(224,182,92,.06)}
+.prose details > *:not(summary){margin-left:13px;margin-right:13px}
+.prose details > *:last-child{margin-bottom:13px}
+.prose details h4{
+  margin:14px 13px 5px;font-size:13.5px;font-weight:700;color:var(--bone);letter-spacing:.02em;
+}
+.prose details.guide summary{color:var(--jade-ink)}
+.prose details.guide summary::after{border-color:var(--jade)}
+.prose details.guide[open]{border-color:rgba(50,168,122,.4)}
+
+/* ---------- 一晚要花多少 -------------------------------------------------- */
+.lab-hr{margin:20px 0;border:none;border-top:1px solid var(--seam-soft)}
+.cost-hero{
+  padding:14px;border-radius:var(--r-md);text-align:center;
+  border:1px solid var(--gold-dim);background:rgba(224,182,92,.08);
+}
+.cost-hero .k{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--gold-dim);font-weight:700}
+.cost-hero .v{font-size:40px;font-weight:800;font-stretch:112%;line-height:1.1;color:var(--red-ink);font-variant-numeric:tabular-nums}
+.cost-hero .s{margin-top:4px;font-size:13px;color:var(--bone-2)}
+.cost-hero .s b{color:var(--bone)}
+.cost-rows{display:flex;flex-direction:column;gap:6px}
+.cost-row{
+  display:flex;align-items:baseline;gap:10px;padding:9px 11px;border-radius:var(--r-sm);
+  border:1px solid var(--seam-soft);background:rgba(0,0,0,.24);font-size:13px;
+}
+.cost-row .k{flex:1 1 auto;color:var(--bone-2)}
+.cost-row .v{font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap}
+.cost-note{
+  padding:12px 13px;border-radius:var(--r-md);font-size:13px;line-height:1.75;
+  border:1px solid var(--seam);background:rgba(0,0,0,.26);color:var(--bone-2);
+}
+.cost-note b{color:var(--gold)}
+
 /* ---------- responsive -------------------------------------------------- */
 @media (max-width:1120px){
   .board{grid-template-columns:minmax(0,1fr)}
